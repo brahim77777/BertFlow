@@ -1,0 +1,42 @@
+# Ignore your custom folder
+files/
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Temporary files
+*.tmp
+*.temp
+
+# React / bundler artifacts
+coverage/
+.next/
+out/
+
+# Optional: ignore compiled JS maps
+*.map

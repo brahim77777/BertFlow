@@ -1,0 +1,665 @@
+{
+  "nodes": [
+    {
+      "id": "run-dev_bun_dev_launcher",
+      "label": "Bun Dev Launcher",
+      "file_type": "code",
+      "source_file": "run-dev.ps1",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "server_local_http_server",
+      "label": "Local HTTP Component Builder Server",
+      "file_type": "code",
+      "source_file": "server.mjs",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "server_component_name_normalizer",
+      "label": "Component Name Normalizer",
+      "file_type": "code",
+      "source_file": "server.mjs",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "server_safe_file_name",
+      "label": "Safe File Name Sanitizer",
+      "file_type": "code",
+      "source_file": "server.mjs",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "server_generated_component_renderer",
+      "label": "Generated Component Renderer",
+      "file_type": "code",
+      "source_file": "server.mjs",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "server_file_upload_endpoint",
+      "label": "POST /api/files Endpoint",
+      "file_type": "code",
+      "source_file": "server.mjs",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "server_component_generation_endpoint",
+      "label": "POST /api/components Endpoint",
+      "file_type": "code",
+      "source_file": "server.mjs",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "vite_local_builder_api_plugin",
+      "label": "Vite Local Builder API Plugin",
+      "file_type": "code",
+      "source_file": "vite.config.js",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "vite_generated_component_renderer",
+      "label": "Vite Generated Component Renderer",
+      "file_type": "code",
+      "source_file": "vite.config.js",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "main_component_builder_app",
+      "label": "Dynamic Component Builder App",
+      "file_type": "code",
+      "source_file": "src/main.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "main_component_schema",
+      "label": "Saved Component Schema",
+      "file_type": "code",
+      "source_file": "src/main.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "main_file_field_upload_control",
+      "label": "Builder File Field Upload Control",
+      "file_type": "code",
+      "source_file": "src/main.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "main_component_autosave",
+      "label": "Component Autosave to JSX",
+      "file_type": "code",
+      "source_file": "src/main.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "flow_pipeline_canvas",
+      "label": "Saved Component Flow Canvas",
+      "file_type": "code",
+      "source_file": "src/flow.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "flow_saved_component_node",
+      "label": "Saved Component Node Runtime",
+      "file_type": "code",
+      "source_file": "src/flow.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "flow_file_field_upload_control",
+      "label": "Flow File Field Upload Control",
+      "file_type": "code",
+      "source_file": "src/flow.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "generated_document_node",
+      "label": "Document Generated Node",
+      "file_type": "code",
+      "source_file": "src/components/generated/Document.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "generated_document_upload_node",
+      "label": "Document Upload Generated Node",
+      "file_type": "code",
+      "source_file": "src/components/generated/DocumentUpload.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "generated_llm_model_node",
+      "label": "LLM Model Generated Node",
+      "file_type": "code",
+      "source_file": "src/components/generated/LLMModel.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "generated_llm_model_copy_node",
+      "label": "LLM Model Copy Generated Node",
+      "file_type": "code",
+      "source_file": "src/components/generated/LLMModelCopy.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "generated_output_node",
+      "label": "Output Generated Node",
+      "file_type": "code",
+      "source_file": "src/components/generated/Output.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "generated_empty_component_nodes",
+      "label": "Empty Generated Component Nodes",
+      "file_type": "code",
+      "source_file": "src/components/generated/NewComponent.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "generated_test_node",
+      "label": "Test Node Generated Component",
+      "file_type": "code",
+      "source_file": "src/components/generated/TestNode.jsx",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "index_react_root_entry",
+      "label": "React Root HTML Entry",
+      "file_type": "document",
+      "source_file": "index.html",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_component_builder_features",
+      "label": "Component Builder Feature Description",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "activate_virtualenv_powershell",
+      "label": "PowerShell Virtualenv Activation Script",
+      "file_type": "code",
+      "source_file": "langenv/Scripts/activate.ps1",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "activate_this_python_virtualenv",
+      "label": "Python Virtualenv In-Process Activation",
+      "file_type": "code",
+      "source_file": "langenv/Scripts/activate_this.py",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "upload-check_missing_file_artifact",
+      "label": "Missing upload-check.txt Artifact",
+      "file_type": "document",
+      "source_file": "files/upload-check.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "2410-08801v1_missing_paper_artifact",
+      "label": "Missing 2410.08801v1 PDF Artifact",
+      "file_type": "paper",
+      "source_file": "files/2410.08801v1.pdf",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "untitled-design_missing_image_artifact",
+      "label": "Missing Untitled Design Image Artifact",
+      "file_type": "image",
+      "source_file": "files/Untitled design.jpg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "run-dev_bun_dev_launcher",
+      "target": "vite_local_builder_api_plugin",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.78,
+      "source_file": "run-dev.ps1",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "server_component_generation_endpoint",
+      "target": "server_component_name_normalizer",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "server.mjs",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "server_component_generation_endpoint",
+      "target": "server_generated_component_renderer",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "server.mjs",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "server_file_upload_endpoint",
+      "target": "server_safe_file_name",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "server.mjs",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "server_generated_component_renderer",
+      "target": "main_component_schema",
+      "relation": "shares_data_with",
+      "confidence": "INFERRED",
+      "confidence_score": 0.86,
+      "source_file": "server.mjs",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "vite_local_builder_api_plugin",
+      "target": "server_local_http_server",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.92,
+      "source_file": "vite.config.js",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "vite_local_builder_api_plugin",
+      "target": "vite_generated_component_renderer",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vite.config.js",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "main_file_field_upload_control",
+      "target": "server_file_upload_endpoint",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/main.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "main_component_autosave",
+      "target": "server_component_generation_endpoint",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/main.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "main_component_builder_app",
+      "target": "main_component_schema",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/main.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "main_component_builder_app",
+      "target": "flow_pipeline_canvas",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/main.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "flow_pipeline_canvas",
+      "target": "main_component_schema",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/flow.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "flow_pipeline_canvas",
+      "target": "flow_saved_component_node",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/flow.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "flow_file_field_upload_control",
+      "target": "server_file_upload_endpoint",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/flow.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "flow_saved_component_node",
+      "target": "main_component_schema",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/flow.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "generated_document_upload_node",
+      "target": "generated_output_node",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.84,
+      "source_file": "src/components/generated/DocumentUpload.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "generated_document_node",
+      "target": "generated_llm_model_node",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.88,
+      "source_file": "src/components/generated/Document.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "generated_llm_model_node",
+      "target": "generated_llm_model_copy_node",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "src/components/generated/LLMModel.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "generated_empty_component_nodes",
+      "target": "main_component_schema",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/components/generated/NewComponent.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "generated_test_node",
+      "target": "main_component_schema",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/components/generated/TestNode.jsx",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_component_builder_features",
+      "target": "main_component_builder_app",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_component_builder_features",
+      "target": "main_component_autosave",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_component_builder_features",
+      "target": "main_file_field_upload_control",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "index_react_root_entry",
+      "target": "main_component_builder_app",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "index.html",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "activate_virtualenv_powershell",
+      "target": "activate_this_python_virtualenv",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.82,
+      "source_file": "langenv/Scripts/activate.ps1",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "upload-check_missing_file_artifact",
+      "target": "server_file_upload_endpoint",
+      "relation": "references",
+      "confidence": "AMBIGUOUS",
+      "confidence_score": 0.2,
+      "source_file": "files/upload-check.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "2410-08801v1_missing_paper_artifact",
+      "target": "generated_document_upload_node",
+      "relation": "conceptually_related_to",
+      "confidence": "AMBIGUOUS",
+      "confidence_score": 0.18,
+      "source_file": "files/2410.08801v1.pdf",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "untitled-design_missing_image_artifact",
+      "target": "main_component_builder_app",
+      "relation": "conceptually_related_to",
+      "confidence": "AMBIGUOUS",
+      "confidence_score": 0.16,
+      "source_file": "files/Untitled design.jpg",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "component_generation_flow",
+      "label": "Component Generation Flow",
+      "nodes": [
+        "main_component_builder_app",
+        "main_component_autosave",
+        "server_component_generation_endpoint",
+        "server_generated_component_renderer",
+        "generated_test_node"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.91,
+      "source_file": "src/main.jsx"
+    },
+    {
+      "id": "file_upload_flow",
+      "label": "File Upload Flow",
+      "nodes": [
+        "main_file_field_upload_control",
+        "flow_file_field_upload_control",
+        "server_file_upload_endpoint",
+        "generated_document_upload_node"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.88,
+      "source_file": "src/main.jsx"
+    },
+    {
+      "id": "saved_component_runtime_flow",
+      "label": "Saved Component Runtime Flow",
+      "nodes": [
+        "main_component_schema",
+        "flow_pipeline_canvas",
+        "flow_saved_component_node",
+        "generated_document_node",
+        "generated_llm_model_node",
+        "generated_output_node"
+      ],
+      "relation": "form",
+      "confidence": "INFERRED",
+      "confidence_score": 0.84,
+      "source_file": "src/flow.jsx"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

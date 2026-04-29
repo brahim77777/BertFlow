@@ -1,0 +1,20 @@
+C:\Users\brahim\Documents\langflow-like\bertLike\run-dev.ps1
+C:\Users\brahim\Documents\langflow-like\bertLike\server.mjs
+C:\Users\brahim\Documents\langflow-like\bertLike\vite.config.js
+C:\Users\brahim\Documents\langflow-like\bertLike\langenv\Scripts\activate.ps1
+C:\Users\brahim\Documents\langflow-like\bertLike\langenv\Scripts\activate_this.py
+C:\Users\brahim\Documents\langflow-like\bertLike\src\flow.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\src\main.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\src\components\generated\Document.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\src\components\generated\DocumentUpload.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\src\components\generated\LLMModel.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\src\components\generated\LLMModelCopy.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\src\components\generated\NewComponent.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\src\components\generated\Ou.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\src\components\generated\Output.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\src\components\generated\TestNode.jsx
+C:\Users\brahim\Documents\langflow-like\bertLike\index.html
+C:\Users\brahim\Documents\langflow-like\bertLike\README.md
+C:\Users\brahim\Documents\langflow-like\bertLike\files\upload-check.txt
+C:\Users\brahim\Documents\langflow-like\bertLike\files\2410.08801v1.pdf
+C:\Users\brahim\Documents\langflow-like\bertLike\files\Untitled design.jpg

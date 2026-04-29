@@ -1,0 +1,277 @@
+{
+  "communities": {
+    "0": [
+      "src_main_addmenu",
+      "src_main_app",
+      "src_main_createcomponent",
+      "src_main_fieldeditor",
+      "src_main_fieldinput",
+      "src_main_iconbutton",
+      "src_main_inspector",
+      "src_main_jsx",
+      "src_main_loadcomponents",
+      "src_main_makeid",
+      "src_main_porteditor",
+      "src_main_root",
+      "src_main_tooltip"
+    ],
+    "1": [
+      "flow_file_field_upload_control",
+      "main_component_autosave",
+      "main_file_field_upload_control",
+      "readme_component_builder_features",
+      "server_component_generation_endpoint",
+      "server_component_name_normalizer",
+      "server_file_upload_endpoint",
+      "server_generated_component_renderer",
+      "server_safe_file_name",
+      "upload-check_missing_file_artifact"
+    ],
+    "2": [
+      "bertlike_vite_config_escapetext",
+      "bertlike_vite_config_localapiplugin",
+      "bertlike_vite_config_parsemultipartfile",
+      "bertlike_vite_config_readrequestbody",
+      "bertlike_vite_config_rendergeneratedcomponent",
+      "bertlike_vite_config_safefilename",
+      "bertlike_vite_config_sendjson",
+      "bertlike_vite_config_tocomponentname",
+      "vite_config_js"
+    ],
+    "3": [
+      "bertlike_server_escapetext",
+      "bertlike_server_parsemultipartfile",
+      "bertlike_server_readrequestbody",
+      "bertlike_server_readrequestbuffer",
+      "bertlike_server_rendergeneratedcomponent",
+      "bertlike_server_safefilename",
+      "bertlike_server_tocomponentname",
+      "server_mjs"
+    ],
+    "4": [
+      "flow_pipeline_canvas",
+      "flow_saved_component_node",
+      "generated_empty_component_nodes",
+      "generated_test_node",
+      "index_react_root_entry",
+      "main_component_builder_app",
+      "main_component_schema",
+      "untitled-design_missing_image_artifact"
+    ],
+    "5": [
+      "src_flow_clonecomponent",
+      "src_flow_flow",
+      "src_flow_flowfieldinput",
+      "src_flow_jsx",
+      "src_flow_loadsavedcomponents",
+      "src_flow_makeid",
+      "src_flow_stopflowinteraction"
+    ],
+    "6": [
+      "langenv_scripts_activate_ps1",
+      "scripts_activate_global_deactivate",
+      "scripts_activate_global_old_virtual_prompt",
+      "scripts_activate_global_prompt",
+      "scripts_activate_global_pydoc"
+    ],
+    "7": [
+      "run-dev_bun_dev_launcher",
+      "server_local_http_server",
+      "vite_generated_component_renderer",
+      "vite_local_builder_api_plugin"
+    ],
+    "8": [
+      "generated_document_document",
+      "generated_document_fieldvalue",
+      "src_components_generated_document_jsx"
+    ],
+    "9": [
+      "generated_documentupload_documentupload",
+      "generated_documentupload_fieldvalue",
+      "src_components_generated_documentupload_jsx"
+    ],
+    "10": [
+      "generated_llmmodel_fieldvalue",
+      "generated_llmmodel_llmmodel",
+      "src_components_generated_llmmodel_jsx"
+    ],
+    "11": [
+      "generated_llmmodelcopy_fieldvalue",
+      "generated_llmmodelcopy_llmmodelcopy",
+      "src_components_generated_llmmodelcopy_jsx"
+    ],
+    "12": [
+      "generated_newcomponent_fieldvalue",
+      "generated_newcomponent_newcomponent",
+      "src_components_generated_newcomponent_jsx"
+    ],
+    "13": [
+      "generated_ou_fieldvalue",
+      "generated_ou_ou",
+      "src_components_generated_ou_jsx"
+    ],
+    "14": [
+      "generated_output_fieldvalue",
+      "generated_output_output",
+      "src_components_generated_output_jsx"
+    ],
+    "15": [
+      "generated_testnode_fieldvalue",
+      "generated_testnode_testnode",
+      "src_components_generated_testnode_jsx"
+    ],
+    "16": [
+      "generated_document_node",
+      "generated_llm_model_copy_node",
+      "generated_llm_model_node"
+    ],
+    "17": [
+      "2410-08801v1_missing_paper_artifact",
+      "generated_document_upload_node",
+      "generated_output_node"
+    ],
+    "18": [
+      "activate_this_python_virtualenv",
+      "activate_virtualenv_powershell"
+    ],
+    "19": [
+      "run_dev_ps1"
+    ],
+    "20": [
+      "langenv_scripts_activate_this_py"
+    ]
+  },
+  "cohesion": {
+    "0": 0.17,
+    "1": 0.2,
+    "2": 0.31,
+    "3": 0.36,
+    "4": 0.32,
+    "5": 0.29,
+    "6": 0.4,
+    "7": 0.5,
+    "8": 0.67,
+    "9": 0.67,
+    "10": 0.67,
+    "11": 0.67,
+    "12": 0.67,
+    "13": 0.67,
+    "14": 0.67,
+    "15": 0.67,
+    "16": 0.67,
+    "17": 0.67,
+    "18": 1.0,
+    "19": 1.0,
+    "20": 1.0
+  },
+  "gods": [
+    {
+      "id": "main_component_schema",
+      "label": "Saved Component Schema",
+      "degree": 6
+    },
+    {
+      "id": "main_component_builder_app",
+      "label": "Dynamic Component Builder App",
+      "degree": 5
+    },
+    {
+      "id": "server_file_upload_endpoint",
+      "label": "POST /api/files Endpoint",
+      "degree": 4
+    },
+    {
+      "id": "bertlike_server_rendergeneratedcomponent",
+      "label": "renderGeneratedComponent()",
+      "degree": 3
+    },
+    {
+      "id": "bertlike_vite_config_rendergeneratedcomponent",
+      "label": "renderGeneratedComponent()",
+      "degree": 3
+    },
+    {
+      "id": "server_component_generation_endpoint",
+      "label": "POST /api/components Endpoint",
+      "degree": 3
+    },
+    {
+      "id": "vite_local_builder_api_plugin",
+      "label": "Vite Local Builder API Plugin",
+      "degree": 3
+    },
+    {
+      "id": "flow_pipeline_canvas",
+      "label": "Saved Component Flow Canvas",
+      "degree": 3
+    },
+    {
+      "id": "readme_component_builder_features",
+      "label": "Component Builder Feature Description",
+      "degree": 3
+    },
+    {
+      "id": "bertlike_server_tocomponentname",
+      "label": "toComponentName()",
+      "degree": 2
+    }
+  ],
+  "surprises": [
+    {
+      "source": "Missing Untitled Design Image Artifact",
+      "target": "Dynamic Component Builder App",
+      "source_files": [
+        "files/Untitled design.jpg",
+        "src/main.jsx"
+      ],
+      "confidence": "AMBIGUOUS",
+      "relation": "conceptually_related_to",
+      "why": "ambiguous connection - not explicitly stated in source; crosses file types (code \u2194 image); connects across different repos/directories; peripheral node `Missing Untitled Design Image Artifact` unexpectedly reaches hub `Dynamic Component Builder App`"
+    },
+    {
+      "source": "Missing upload-check.txt Artifact",
+      "target": "POST /api/files Endpoint",
+      "source_files": [
+        "files/upload-check.txt",
+        "server.mjs"
+      ],
+      "confidence": "AMBIGUOUS",
+      "relation": "references",
+      "why": "ambiguous connection - not explicitly stated in source; crosses file types (code \u2194 doc); connects across different repos/directories"
+    },
+    {
+      "source": "Missing 2410.08801v1 PDF Artifact",
+      "target": "Document Upload Generated Node",
+      "source_files": [
+        "files/2410.08801v1.pdf",
+        "src/components/generated/DocumentUpload.jsx"
+      ],
+      "confidence": "AMBIGUOUS",
+      "relation": "conceptually_related_to",
+      "why": "ambiguous connection - not explicitly stated in source; crosses file types (code \u2194 paper); connects across different repos/directories"
+    },
+    {
+      "source": "Vite Local Builder API Plugin",
+      "target": "Local HTTP Component Builder Server",
+      "source_files": [
+        "vite.config.js",
+        "server.mjs"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; semantically similar concepts with no structural link"
+    },
+    {
+      "source": "Generated Component Renderer",
+      "target": "Saved Component Schema",
+      "source_files": [
+        "server.mjs",
+        "src/main.jsx"
+      ],
+      "confidence": "INFERRED",
+      "relation": "shares_data_with",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities; peripheral node `Generated Component Renderer` unexpectedly reaches hub `Saved Component Schema`"
+    }
+  ],
+  "cached_files": 16
+}
