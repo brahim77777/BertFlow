@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # BertLike Component Builder
 
 A Bun + Vite React Flow prototype for creating dynamic node components.
