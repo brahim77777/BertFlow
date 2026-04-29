@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # BertLike Component Builder
 
 A Bun + Vite React Flow prototype for creating dynamic node components.
@@ -40,3 +41,7 @@ bun install
 - Export the selected component as JSON.
 
 Generated components are React Flow node components that import `Handle` and `Position` from `@xyflow/react`.
+=======
+# BertFlow
+A langflow alternative.
+>>>>>>> 1151a34f8bf9e3f599cfc0beb024accf9a0322ba
