@@ -643,7 +643,10 @@ function App() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onConnect={(params) => setEdges((items) => addEdge(params, items))}
+          onConnect={(params) => setEdges((items) => {
+            const filtered = items.filter(e => !(e.target === params.target && e.targetHandle === params.targetHandle));
+            return addEdge({ ...params, zIndex: 50 }, filtered);
+          })}
           nodeTypes={nodeTypes}
           fitView
           minZoom={0.45}

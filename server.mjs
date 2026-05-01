@@ -209,6 +209,19 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/run") {
+      const body = await readRequestBody(request);
+      const payload = JSON.parse(body);
+      
+      console.log("\n--- Received Run Request ---");
+      console.log(JSON.stringify(payload, null, 2));
+      console.log("----------------------------\n");
+
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ status: "success", message: "Run request received", run_id: payload.run_id }));
+      return;
+    }
+
     const pathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
     const safePath = normalize(pathname).replace(/^(\.\.[/\\])+/, "");
     const filePath = join(root, safePath);

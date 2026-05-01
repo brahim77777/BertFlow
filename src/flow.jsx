@@ -278,8 +278,93 @@ export default function Flow() {
   }, []);
 
   const onConnect = useCallback((params) => {
-    setEdges((currentEdges) => addEdge(params, currentEdges));
+    setEdges((currentEdges) => {
+      const filtered = currentEdges.filter(e => !(e.target === params.target && e.targetHandle === params.targetHandle));
+      return addEdge({ ...params, zIndex: 50 }, filtered);
+    });
   }, []);
+
+  const runFlow = useCallback(async () => {
+    const runPayload = {
+      run_id: makeId("run"),
+      flow_id: "flow_abc123", // Static for now
+      schema_version: 1,
+      flow_revision: 1,
+      created_at: new Date().toISOString(),
+      execution_config: {
+        timeout_seconds: Number(import.meta.env.VITE_EXECUTION_TIMEOUT_SECONDS || 120),
+        on_node_failure: import.meta.env.VITE_EXECUTION_ON_NODE_FAILURE || "halt",
+        max_retries: Number(import.meta.env.VITE_EXECUTION_MAX_RETRIES || 0)
+      },
+      nodes: nodes.reduce((acc, node) => {
+        const comp = node.data.component;
+        const args = {};
+        let cache = false;
+        
+        if (comp.fields) {
+          comp.fields.forEach(f => {
+            const labelLower = f.label.toLowerCase();
+            if (labelLower === "use cache" || f.id === "field-cache") {
+              cache = Boolean(f.value);
+            } else {
+              const argName = labelLower.replace(/\s+/g, "_");
+              args[argName] = f.value;
+            }
+          });
+        }
+
+        acc[node.id] = {
+          node_type: comp.name.toLowerCase().replace(/\s+/g, "_"),
+          args,
+          config: { cache }
+        };
+        return acc;
+      }, {}),
+      edges: edges.map(edge => {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const targetNode = nodes.find(n => n.id === edge.target);
+        
+        let fromPortName = edge.sourceHandle;
+        if (sourceNode) {
+           const port = sourceNode.data.component.outputs?.find(p => p.id === edge.sourceHandle);
+           if (port) fromPortName = port.label.toLowerCase().replace(/\s+/g, "_");
+        }
+
+        let toPortName = edge.targetHandle;
+        if (targetNode) {
+           const port = targetNode.data.component.inputs?.find(p => p.id === edge.targetHandle);
+           if (port) toPortName = port.label.toLowerCase().replace(/\s+/g, "_");
+        }
+
+        return {
+          id: edge.id,
+          from: edge.source,
+          from_port: fromPortName,
+          to: edge.target,
+          to_port: toPortName
+        };
+      })
+    };
+
+    console.log("Run Payload:", JSON.stringify(runPayload, null, 2));
+
+    try {
+      const response = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(runPayload)
+      });
+      if (!response.ok) {
+        throw new Error("Failed to run flow");
+      }
+      const result = await response.json();
+      console.log("Run Result:", result);
+      alert("Flow run successfully! Check console for details.");
+    } catch (error) {
+      console.error("Error running flow:", error);
+      alert("Failed to run flow. Check console for errors.");
+    }
+  }, [nodes, edges]);
 
   return (
     <main className="flow-page">
@@ -310,6 +395,9 @@ export default function Flow() {
           </button>
           <button type="button" onClick={addSelectedComponent} disabled={!selectedComponent}>
             Add Component
+          </button>
+          <button type="button" className="run-button" onClick={runFlow} style={{ background: '#3b82f6', color: 'white', fontWeight: 'bold' }}>
+            Run Flow
           </button>
         </div>
       </div>

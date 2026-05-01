@@ -1,0 +1,144 @@
+{
+  "run_id": "run-f57518d8-3cf9-4908-b1fa-212e5da2f674",
+  "flow_id": "flow_abc123",
+  "schema_version": 1,
+  "flow_revision": 1,
+  "created_at": "2026-05-01T06:47:40.424Z",
+  "execution_config": {
+    "timeout_seconds": 120,
+    "on_node_failure": "halt",
+    "max_retries": 0
+  },
+  "nodes": {
+    "flow-node-df7e424d-06a1-4ad3-81ec-7eeb87eb4c75": {
+      "node_type": "llm_model_copy",
+      "args": {
+        "text_field": "salut mon ami",
+        "toggle_field": true,
+        "long_text_field": "salut cocou"
+      },
+      "config": {
+        "cache": false
+      }
+    },
+    "flow-node-77b07b7b-554e-4530-b484-9ea3dfecc467": {
+      "node_type": "document_upload",
+      "args": {
+        "file": "",
+        "cach_results": true,
+        "number_field": 8,
+        "checkbox_field": false
+      },
+      "config": {
+        "cache": false
+      }
+    },
+    "flow-node-fb3780e6-5ca4-4c1f-a765-841b8a791ac6": {
+      "node_type": "output",
+      "args": {},
+      "config": {
+        "cache": false
+      }
+    },
+    "flow-node-aaf9a59f-b175-4ecd-b988-751c245e97cf": {
+      "node_type": "document_upload",
+      "args": {
+        "file": "",
+        "cach_results": true,
+        "number_field": 8,
+        "checkbox_field": false
+      },
+      "config": {
+        "cache": false
+      }
+    },
+    "flow-node-474d5a4b-1e9f-4142-af91-2168b8694b53": {
+      "node_type": "new_component",
+      "args": {},
+      "config": {
+        "cache": false
+      }
+    },
+    "flow-node-27764b78-7137-4988-84e4-157142c8c588": {
+      "node_type": "new_component",
+      "args": {},
+      "config": {
+        "cache": false
+      }
+    },
+    "flow-node-8fe4ebd6-087f-4fab-a4b4-6a59419ec90d": {
+      "node_type": "llm_model_copy_copy",
+      "args": {
+        "text_field": "salut mon ami",
+        "toggle_field": true,
+        "long_text_field": "salut cocous "
+      },
+      "config": {
+        "cache": false
+      }
+    },
+    "flow-node-393f6b5c-727a-4788-aec0-1e26e580fa42": {
+      "node_type": "document_upload",
+      "args": {
+        "file": "",
+        "cach_results": true,
+        "number_field": 8,
+        "checkbox_field": false
+      },
+      "config": {
+        "cache": false
+      }
+    }
+  },
+  "edges": [
+    {
+      "id": "xy-edge__flow-node-df7e424d-06a1-4ad3-81ec-7eeb87eb4c75port-2cbd012b-929a-4020-94b6-435f9ad13c76-flow-node-77b07b7b-554e-4530-b484-9ea3dfecc467port-15fd6b21-0750-45c7-94f8-9ed54f33d495",
+      "from": "flow-node-df7e424d-06a1-4ad3-81ec-7eeb87eb4c75",
+      "from_port": "output_1",
+      "to": "flow-node-77b07b7b-554e-4530-b484-9ea3dfecc467",
+      "to_port": "input_2"
+    },
+    {
+      "id": "xy-edge__flow-node-df7e424d-06a1-4ad3-81ec-7eeb87eb4c75port-70bbd7a6-d259-4c79-a9f7-00f7c7fb01db-flow-node-77b07b7b-554e-4530-b484-9ea3dfecc467port-810375a9-ada5-4916-96f6-b5f636ab7d10",
+      "from": "flow-node-df7e424d-06a1-4ad3-81ec-7eeb87eb4c75",
+      "from_port": "output_3",
+      "to": "flow-node-77b07b7b-554e-4530-b484-9ea3dfecc467",
+      "to_port": "input_3"
+    },
+    {
+      "id": "xy-edge__flow-node-aaf9a59f-b175-4ecd-b988-751c245e97cfport-2a378414-05f9-4d57-930c-1cde12a6b59f-flow-node-77b07b7b-554e-4530-b484-9ea3dfecc467port-e2036135-0fbe-4da5-b08f-76a965c8aab9",
+      "from": "flow-node-aaf9a59f-b175-4ecd-b988-751c245e97cf",
+      "from_port": "text",
+      "to": "flow-node-77b07b7b-554e-4530-b484-9ea3dfecc467",
+      "to_port": "input_2"
+    },
+    {
+      "id": "xy-edge__flow-node-df7e424d-06a1-4ad3-81ec-7eeb87eb4c75port-84060c49-8eac-41f5-814a-3522f00ddf35-flow-node-393f6b5c-727a-4788-aec0-1e26e580fa42port-15fd6b21-0750-45c7-94f8-9ed54f33d495",
+      "from": "flow-node-df7e424d-06a1-4ad3-81ec-7eeb87eb4c75",
+      "from_port": "output_2",
+      "to": "flow-node-393f6b5c-727a-4788-aec0-1e26e580fa42",
+      "to_port": "input_2"
+    },
+    {
+      "id": "xy-edge__flow-node-aaf9a59f-b175-4ecd-b988-751c245e97cfport-af2d83cb-fe1d-45c6-9f16-c5d3e520672c-flow-node-393f6b5c-727a-4788-aec0-1e26e580fa42port-e2036135-0fbe-4da5-b08f-76a965c8aab9",
+      "from": "flow-node-aaf9a59f-b175-4ecd-b988-751c245e97cf",
+      "from_port": "output_2",
+      "to": "flow-node-393f6b5c-727a-4788-aec0-1e26e580fa42",
+      "to_port": "input_2"
+    },
+    {
+      "id": "xy-edge__flow-node-aaf9a59f-b175-4ecd-b988-751c245e97cfport-44aa5cbf-938d-42a9-9afa-bdcf8d9a2f76-flow-node-393f6b5c-727a-4788-aec0-1e26e580fa42port-810375a9-ada5-4916-96f6-b5f636ab7d10",
+      "from": "flow-node-aaf9a59f-b175-4ecd-b988-751c245e97cf",
+      "from_port": "output_3",
+      "to": "flow-node-393f6b5c-727a-4788-aec0-1e26e580fa42",
+      "to_port": "input_3"
+    },
+    {
+      "id": "xy-edge__flow-node-77b07b7b-554e-4530-b484-9ea3dfecc467port-44aa5cbf-938d-42a9-9afa-bdcf8d9a2f76-flow-node-fb3780e6-5ca4-4c1f-a765-841b8a791ac6port-14f0956f-ec0b-4287-b2ca-91b96794936b",
+      "from": "flow-node-77b07b7b-554e-4530-b484-9ea3dfecc467",
+      "from_port": "output_3",
+      "to": "flow-node-fb3780e6-5ca4-4c1f-a765-841b8a791ac6",
+      "to_port": "text"
+    }
+  ]
+}
