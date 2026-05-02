@@ -40,3 +40,6 @@ out/
 
 # Optional: ignore compiled JS maps
 *.map
+
+# Other
+time
