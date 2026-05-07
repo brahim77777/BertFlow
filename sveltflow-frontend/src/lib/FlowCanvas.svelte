@@ -196,6 +196,7 @@
   <SvelteFlow
     {nodes}
     {edges}
+    onlyRenderVisibleElements
     {nodeTypes}
     on:connect={handleConnect}
     fitView

@@ -1,5 +1,6 @@
 import json
 from collections import defaultdict, deque
+
 from graphviz import Digraph
 
 # --- Load JSON ---
@@ -34,10 +35,21 @@ def topological_sort(node_ids, edges):
 
 
 def export_svg(data, output_name="graph"):
-    dot = Digraph(format="svg")
+    # --- Print graph data ---
+    print("=" * 50)
+    print("GRAPH DATA")
+    print("=" * 50)
+    print("\nNodes:")
+    for node_id, node_info in data["nodes"].items():
+        print(f"  {node_id}: {json.dumps(node_info, indent=4)}")
 
-    # Better layout for DAGs
-    dot.attr(rankdir="LR")  # left → right flow
+    print("\nEdges:")
+    for i, edge in enumerate(data["edges"]):
+        print(f"  {i + 1}. {edge['from']} → {edge['to']}")
+    print("=" * 50 + "\n")
+
+    dot = Digraph(format="svg")
+    dot.attr(rankdir="LR")
     dot.attr("node", shape="box")
 
     node_ids = list(data["nodes"].keys())
@@ -62,9 +74,9 @@ def export_svg(data, output_name="graph"):
                 node_id,
                 label,
                 style="filled",
-                fillcolor="#4A90D9",   # pretty blue
+                fillcolor="#4A90D9",
                 fontcolor="white",
-                color="#2C6FAC",       # slightly darker border
+                color="#2C6FAC",
             )
         else:
             dot.node(node_id, label)

@@ -1,6 +1,6 @@
 import Flow from "./flow.jsx";
 
-import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ReactFlow,
@@ -109,7 +109,7 @@ function loadComponents() {
   }
 }
 
-function Tooltip({ text }) {
+const Tooltip = memo(({ text }) => {
   if (!text) return null;
 
   return (
@@ -118,7 +118,7 @@ function Tooltip({ text }) {
       <span className="tooltip-panel">{text}</span>
     </span>
   );
-}
+});
 
 function IconButton({ label, children, className = "", ...props }) {
   return (
@@ -157,7 +157,7 @@ function AddMenu({ label, options, onSelect, buttonClassName = "", className = "
   );
 }
 
-function FieldInput({ field, onChange }) {
+const FieldInput = memo(({ field, onChange }) => {
   const [uploading, setUploading] = useState(false);
 
   const uploadFile = async (file) => {
@@ -257,7 +257,52 @@ function FieldInput({ field, onChange }) {
       className="field-control"
     />
   );
-}
+});
+
+/* ── Memoized port row for builder node ──────────────────────── */
+const BuilderInputPort = memo(({ port }) => (
+  <div className="port-row input" key={port.id}>
+    <Handle type="target" id={port.id} position={Position.Left} />
+    <span>{port.label}</span>
+    <code>{port.type || "any"}</code>
+    <Tooltip text={port.description} />
+  </div>
+));
+
+const BuilderOutputPort = memo(({ port }) => (
+  <div className="port-row output" key={port.id}>
+    <code>{port.type || "any"}</code>
+    <span>{port.label}</span>
+    <Tooltip text={port.description} />
+    <Handle type="source" id={port.id} position={Position.Right} />
+  </div>
+));
+
+/* ── Memoized field row for builder node ─────────────────────── */
+const BuilderFieldRow = memo(({ field, onUpdateField, onRemoveField }) => {
+  const handleChange = useCallback(
+    (value) => onUpdateField(field.id, { value }),
+    [onUpdateField, field.id]
+  );
+
+  const handleRemove = useCallback(
+    () => onRemoveField(field.id),
+    [onRemoveField, field.id]
+  );
+
+  return (
+    <section className="field-row">
+      <div className="field-meta">
+        <span>{field.label}</span>
+        <Tooltip text={field.description} />
+      </div>
+      <FieldInput field={field} onChange={handleChange} />
+      <IconButton label={`Remove ${field.label}`} className="ghost danger" onClick={handleRemove}>
+        <Trash2 size={15} />
+      </IconButton>
+    </section>
+  );
+});
 
 const ComponentNode = memo(({ data }) => {
   const { component, onAddField, onAddPort, onUpdateField, onRemoveField } = data;
@@ -277,12 +322,7 @@ const ComponentNode = memo(({ data }) => {
           <div className="node-section-title">Inputs</div>
           <div className="port-list">
             {component.inputs.map((port) => (
-              <div className="port-row input" key={port.id}>
-                <Handle type="target" id={port.id} position={Position.Left} />
-                <span>{port.label}</span>
-                <code>{port.type || "any"}</code>
-                <Tooltip text={port.description} />
-              </div>
+              <BuilderInputPort key={port.id} port={port} />
             ))}
           </div>
           <IconButton label="Add input port" className="port-add port-add-menu" onClick={() => onAddPort("inputs")}>
@@ -294,16 +334,12 @@ const ComponentNode = memo(({ data }) => {
           <div className="node-section-title">Fields</div>
           <div className="field-list">
             {component.fields.map((field) => (
-              <section className="field-row" key={field.id}>
-                <div className="field-meta">
-                  <span>{field.label}</span>
-                  <Tooltip text={field.description} />
-                </div>
-                <FieldInput field={field} onChange={(value) => onUpdateField(field.id, { value })} />
-                <IconButton label={`Remove ${field.label}`} className="ghost danger" onClick={() => onRemoveField(field.id)}>
-                  <Trash2 size={15} />
-                </IconButton>
-              </section>
+              <BuilderFieldRow
+                key={field.id}
+                field={field}
+                onUpdateField={onUpdateField}
+                onRemoveField={onRemoveField}
+              />
             ))}
           </div>
           <AddMenu
@@ -319,12 +355,7 @@ const ComponentNode = memo(({ data }) => {
           <div className="node-section-title">Outputs</div>
           <div className="port-list">
             {component.outputs.map((port) => (
-              <div className="port-row output" key={port.id}>
-                <code>{port.type || "any"}</code>
-                <span>{port.label}</span>
-                <Tooltip text={port.description} />
-                <Handle type="source" id={port.id} position={Position.Right} />
-              </div>
+              <BuilderOutputPort key={port.id} port={port} />
             ))}
           </div>
           <IconButton label="Add output port" className="port-add port-add-menu" onClick={() => onAddPort("outputs")}>
@@ -336,7 +367,7 @@ const ComponentNode = memo(({ data }) => {
   );
 });
 
-function Inspector({ component, components, saveStatus, onSelect, onUpdate, onAddComponent, onDuplicate, onExport }) {
+const Inspector = memo(({ component, components, saveStatus, onSelect, onUpdate, onAddComponent, onDuplicate, onExport }) => {
   return (
     <aside className="inspector">
       <div className="panel-title">
@@ -410,7 +441,7 @@ function Inspector({ component, components, saveStatus, onSelect, onUpdate, onAd
       </div>
     </aside>
   );
-}
+});
 
 function PortEditor({ title, ports, onChange }) {
   const updatePort = (id, patch) => {
@@ -474,6 +505,9 @@ function FieldEditor({ fields, onChange }) {
     </section>
   );
 }
+
+/* ── Stable edge options ─────────────────────────────────────── */
+const defaultEdgeOptions = { animated: false, zIndex: 50 };
 
 function App() {
   const [components, setComponents] = useState(loadComponents);
@@ -558,11 +592,14 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(components));
   }, [components]);
 
+  // Debounced save to server
+  const saveTimerRef = useRef(null);
   useEffect(() => {
     if (!selected) return;
 
     setSaveStatus("Saving component file...");
-    const timeout = window.setTimeout(async () => {
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
       try {
         const response = await fetch("/api/components", {
           method: "POST",
@@ -581,17 +618,17 @@ function App() {
       }
     }, 450);
 
-    return () => window.clearTimeout(timeout);
+    return () => clearTimeout(saveTimerRef.current);
   }, [selected]);
 
-  const addComponent = () => {
+  const addComponent = useCallback(() => {
     const component = createComponent();
     setComponents((items) => [...items, component]);
     setSelectedId(component.id);
     setEdges([]);
-  };
+  }, [setEdges]);
 
-  const duplicateComponent = () => {
+  const duplicateComponent = useCallback(() => {
     const copy = createComponent({
       ...selected,
       id: makeId("component"),
@@ -602,9 +639,9 @@ function App() {
     });
     setComponents((items) => [...items, copy]);
     setSelectedId(copy.id);
-  };
+  }, [selected]);
 
-  const exportJson = () => {
+  const exportJson = useCallback(() => {
     const blob = new Blob([JSON.stringify(selected, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -612,7 +649,14 @@ function App() {
     link.download = `${selected.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "component"}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  };
+  }, [selected]);
+
+  const onConnect = useCallback((params) => {
+    setEdges((items) => {
+      const filtered = items.filter(e => !(e.target === params.target && e.targetHandle === params.targetHandle));
+      return addEdge(params, filtered);
+    });
+  }, [setEdges]);
 
   return (
     <main className="app-shell">
@@ -641,13 +685,12 @@ function App() {
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          onlyRenderVisibleElements
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onConnect={(params) => setEdges((items) => {
-            const filtered = items.filter(e => !(e.target === params.target && e.targetHandle === params.targetHandle));
-            return addEdge({ ...params, zIndex: 50 }, filtered);
-          })}
+          onConnect={onConnect}
           nodeTypes={nodeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
           fitView
           minZoom={0.45}
           maxZoom={1.5}

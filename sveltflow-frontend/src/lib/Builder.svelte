@@ -165,6 +165,7 @@
     <SvelteFlow
       {nodes}
       {edges}
+      onlyRenderVisibleElements
       {nodeTypes}
       fitView
       minZoom={0.45}

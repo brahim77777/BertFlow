@@ -84,11 +84,11 @@ function FieldValue({ field }) {
   return <span className="component-value">{String(field.value ?? "")}</span>;
 }
 
-function DocumentUpload({ data = {} }) {
+function BrahimYoucefDemo({ data = {} }) {
   const nodeFields = data.fields || fields;
   const nodeInputs = data.inputs || inputs;
   const nodeOutputs = data.outputs || outputs;
-  const label = data.label || `Document Upload`;
+  const label = data.label || `Brahim & youcef demo`;
   const description = data.description || `upload documents here.`;
 
   return (
@@ -129,4 +129,4 @@ function DocumentUpload({ data = {} }) {
   );
 }
 
-export default memo(DocumentUpload);
+export default memo(BrahimYoucefDemo);

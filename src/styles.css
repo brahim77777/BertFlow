@@ -252,6 +252,16 @@ button {
   z-index: 10 !important;
 }
 
+/* ── Performance: promote nodes to own GPU layer ─────────── */
+.react-flow__node {
+  will-change: transform;
+  contain: layout style;
+}
+
+.react-flow__renderer {
+  contain: strict;
+}
+
 .flow-page {
   position: relative;
   width: 100vw;
@@ -290,6 +300,18 @@ button {
   display: block;
   margin-top: 2px;
   color: #111827;
+}
+
+.flow-run-status {
+  display: block;
+  max-width: 540px;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .flow-library {
