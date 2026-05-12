@@ -1,0 +1,28 @@
+this code where deos it get hanled by the frontend ?
+```Python
+        await send_fn(json.dumps({
+            "type": "run_accepted",
+            "run_id": run_id,
+            "n_nodes": len(request.nodes),
+            "n_edges": len(request.edges),
+        }))
+```
+
+
+@staticmethod vs @classmethod
+
+from __future__ import annotations
+
+
+backend/
+- [X] ws_server.py
+
+backend/core/
+- [X] registry.py
+- [X] types.py
+
+backend/nodes/
+- [X] built-in.py
+
+
+

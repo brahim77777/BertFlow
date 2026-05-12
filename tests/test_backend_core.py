@@ -5,6 +5,7 @@ import unittest
 from backend.core.errors import GraphValidationError
 from backend.core.executor import AsyncGraphExecutor
 from backend.core.models import RunRequest
+from backend.core.result_store import HYBRID_THRESHOLD, InMemoryResultStore
 from backend.core.validator import validate_run_request
 from backend.ws_server import build_registry
 
@@ -52,7 +53,10 @@ class BackendCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(state.status, "completed")
         self.assertEqual(state.node_states["demo-a"].status, "completed")
-        self.assertEqual(state.node_states["demo-b"].outputs["text"], "store://run-test/demo-b/text")
+        # Small string output should be inlined (not a ref)
+        self.assertIn("Demo processed", state.node_states["demo-b"].outputs["text"])
+        self.assertIsInstance(state.node_states["demo-b"].outputs["text"], str)
+        self.assertFalse(state.node_states["demo-b"].outputs["text"].startswith("store://"))
         self.assertEqual(state.node_states["out"].outputs, {})
 
     async def test_disconnected_components_run_without_manual_selection(self) -> None:
@@ -141,6 +145,32 @@ class BackendCoreTests(unittest.IsolatedAsyncioTestCase):
             validate_run_request(request, self.registry)
 
         self.assertIn("more than one incoming edge", str(raised.exception))
+
+    async def test_hybrid_inline_small_values(self) -> None:
+        store = InMemoryResultStore()
+        outputs = store.build_outputs("r1", "n1", {"text": "hello", "count": 42, "flag": True})
+        self.assertEqual(outputs["text"], "hello")
+        self.assertEqual(outputs["count"], 42)
+        self.assertEqual(outputs["flag"], True)
+        self.assertNotIn("store://", str(outputs))
+
+    async def test_hybrid_ref_large_values(self) -> None:
+        store = InMemoryResultStore()
+        large = "x" * (HYBRID_THRESHOLD + 1)
+        outputs = store.build_outputs("r2", "n2", {"data": large})
+        self.assertTrue(outputs["data"].startswith("store://"))
+        resolved = store.resolve(outputs["data"])
+        self.assertEqual(resolved, large)
+
+    async def test_hybrid_resolve_refs_message(self) -> None:
+        store = InMemoryResultStore()
+        large = "y" * (HYBRID_THRESHOLD + 1)
+        outputs = store.build_outputs("r3", "n3", {"big": large, "small": "ok"})
+        ref = outputs["big"]
+        self.assertTrue(ref.startswith("store://"))
+        self.assertEqual(outputs["small"], "ok")
+        resolved = store.resolve(ref)
+        self.assertEqual(resolved, large)
 
 
 if __name__ == "__main__":

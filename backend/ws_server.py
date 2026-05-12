@@ -1,104 +1,173 @@
 from __future__ import annotations
 
-import argparse
 import asyncio
 import json
-import logging
+import traceback
 from typing import Any
 
-from websockets.asyncio.server import serve
-
-from backend.core.errors import BackendError, GraphValidationError
+from backend.core.errors import GraphValidationError
 from backend.core.executor import AsyncGraphExecutor
+from backend.core.logging import logger
 from backend.core.models import RunRequest
 from backend.core.registry import NodeRegistry
 from backend.core.result_store import InMemoryExecutionCache, InMemoryResultStore
-from backend.nodes.builtin import register_builtin_nodes
-
-LOGGER = logging.getLogger("bertlike.backend")
-PROTOCOL_VERSION = 1
+from backend.core.validator import validate_run_request
 
 
 def build_registry() -> NodeRegistry:
-    registry = NodeRegistry()
-    register_builtin_nodes(registry)
-    return registry
+    return NodeRegistry.discover()
 
 
-class WorkflowWebSocketServer:
-    def __init__(self, registry: NodeRegistry | None = None) -> None:
-        self.registry = registry or build_registry()
-        self.result_store = InMemoryResultStore()
-        self.cache = InMemoryExecutionCache()
+def _make_error(msg: str, code: str = "error") -> str:
+    return json.dumps({"type": code, "message": msg})
 
-    async def handle(self, websocket: Any) -> None:
-        send_lock = asyncio.Lock()
 
-        async def send(payload: dict[str, Any]) -> None:
-            async with send_lock:
-                await websocket.send(json.dumps(payload, default=str))
+async def handle_message(
+    text: str,
+    registry: NodeRegistry,
+    executor: AsyncGraphExecutor,
+    send_fn: Any,
+    store: InMemoryResultStore | None = None,
+) -> None:
+    try:
+        msg = json.loads(text)
+    except json.JSONDecodeError as exc:
+        await send_fn(_make_error(f"Invalid JSON: {exc}", "parse_error"))
+        return
 
-        await send(
-            {
-                "type": "hello",
-                "protocol_version": PROTOCOL_VERSION,
-                "node_types": self.registry.to_json(),
+    msg_type = msg.get("type", "")
+
+    if msg_type == "ping":
+        await send_fn(json.dumps({"type": "pong"}))
+        return
+
+    if msg_type == "get_node_types":
+        await send_fn(json.dumps({
+            "type": "node_types",
+            "node_types": registry.get_types(),
+        }))
+        return
+
+    if msg_type == "run":
+        payload = msg.get("payload", {})
+        run_id = payload.get("run_id", "unknown")
+
+        try:
+            request = RunRequest.from_dict(payload)
+        except (KeyError, TypeError, ValueError) as exc:
+            await send_fn(json.dumps({
+                "type": "run_rejected",
+                "run_id": run_id,
+                "errors": [f"Invalid run request: {exc}"],
+            }))
+            return
+
+        try:
+            validate_run_request(request, registry)
+        except GraphValidationError as exc:
+            await send_fn(json.dumps({
+                "type": "run_rejected",
+                "run_id": run_id,
+                "errors": [str(exc)],
+            }))
+            return
+
+        await send_fn(json.dumps({
+            "type": "run_accepted",
+            "run_id": run_id,
+            "n_nodes": len(request.nodes),
+            "n_edges": len(request.edges),
+        }))
+
+        try:
+            async def on_node_status(nid: str, status: str, error: str | None = None) -> None:
+                await send_fn(json.dumps({
+                    "type": "node_status",
+                    "run_id": run_id,
+                    "node_id": nid,
+                    "status": status,
+                    "error": error,
+                }))
+
+            state = await executor.execute(request, on_node_status=on_node_status)
+            result = {
+                "type": "run_finished",
+                "run_id": run_id,
+                "state": {
+                    "status": state.status,
+                    "node_states": {
+                        nid: {
+                            "status": ns.status,
+                            "outputs": ns.outputs,
+                            "cached": ns.cached,
+                            "error": ns.error,
+                        }
+                        for nid, ns in state.node_states.items()
+                    },
+                },
             }
-        )
+            if state.error:
+                result["state"]["error"] = state.error
+            await send_fn(json.dumps(result))
+        except Exception as exc:
+            logger.error("Execution failed: %s\n%s", exc, traceback.format_exc())
+            await send_fn(json.dumps({
+                "type": "run_finished",
+                "run_id": run_id,
+                "state": {"status": "failed", "error": str(exc)},
+            }))
+        return
 
-        async for raw_message in websocket:
-            try:
-                message = json.loads(raw_message)
-                await self._handle_message(message, send)
-            except GraphValidationError as exc:
-                await send({"type": "run_rejected", "status": "failed", "errors": exc.issues})
-            except BackendError as exc:
-                await send({"type": "error", "message": str(exc)})
-            except json.JSONDecodeError:
-                await send({"type": "error", "message": "message must be JSON"})
-            except Exception as exc:  # noqa: BLE001 - protects the socket session
-                LOGGER.exception("unexpected websocket handler failure")
-                await send({"type": "error", "message": str(exc)})
+    if msg_type == "resolve_refs":
+        refs: list[str] = msg.get("refs", [])
+        values: dict[str, Any] = {}
+        if store is not None:
+            for ref in refs:
+                values[ref] = store.resolve(ref)
+        await send_fn(json.dumps({"type": "refs_resolved", "values": values}))
+        return
 
-    async def _handle_message(self, message: dict[str, Any], send: Any) -> None:
-        message_type = message.get("type")
+    await send_fn(_make_error(f"Unknown message type '{msg_type}'", "unknown_type"))
 
-        if message_type == "ping":
-            await send({"type": "pong"})
-            return
 
-        if message_type == "get_node_types":
-            await send({"type": "node_types", "node_types": self.registry.to_json()})
-            return
+async def ws_handler(websocket: Any) -> None:
+    registry = build_registry()
+    store = InMemoryResultStore()
+    cache = InMemoryExecutionCache()
+    executor = AsyncGraphExecutor(registry, store, cache)
 
-        if message_type == "run":
-            request = RunRequest.from_dict(message.get("payload"))
-            await send({"type": "run_accepted", "run_id": request.run_id})
-            executor = AsyncGraphExecutor(
-                registry=self.registry,
-                result_store=self.result_store,
-                cache=self.cache,
-                event_sink=send,
-            )
-            final_state = await executor.execute(request)
-            await send({"type": "run_finished", "run_id": request.run_id, "state": final_state.to_json()})
-            return
+    logger.info(
+        "New connection — %d node types available",
+        len(registry),
+    )
 
-        await send({"type": "error", "message": f"unknown message type: {message_type!r}"})
+    async def send(data: str) -> None:
+        try:
+            await websocket.send(data)
+        except Exception:
+            pass
+
+    await send(json.dumps({
+        "type": "node_types",
+        "node_types": registry.get_types(),
+    }))
+
+    async for raw in websocket:
+        try:
+            await handle_message(raw, registry, executor, send, store)
+        except Exception as exc:
+            logger.error("Unhandled error: %s\n%s", exc, traceback.format_exc())
+            await send(_make_error(f"Internal server error: {exc}", "internal_error"))
 
 
 async def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:
-    server = WorkflowWebSocketServer()
-    async with serve(server.handle, host, port):
-        LOGGER.info("Workflow backend listening on ws://%s:%s/ws", host, port)
-        await asyncio.Future()
+    import websockets.asyncio.server
+
+    logger.info("Starting BertFlow WebSocket server on %s:%s", host, port)
+    async with websockets.asyncio.server.serve(ws_handler, host, port):
+        await asyncio.get_running_loop().create_future()
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the BertLike asyncio WebSocket backend.")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    asyncio.run(run_server(args.host, args.port))
-
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(run_server())

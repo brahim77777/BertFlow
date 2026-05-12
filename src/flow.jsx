@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -8,11 +8,12 @@ import {
   ReactFlow,
   addEdge,
   applyEdgeChanges,
-  applyNodeChanges
+  applyNodeChanges,
 } from "@xyflow/react";
 
 const STORAGE_KEY = "bertlike.component-builder.components";
-const BACKEND_WS_URL = import.meta.env.VITE_BACKEND_WS_URL || "ws://127.0.0.1:8765/ws";
+const BACKEND_WS_URL =
+  import.meta.env.VITE_BACKEND_WS_URL || "ws://127.0.0.1:8765";
 
 function makeId(prefix) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -28,7 +29,6 @@ function loadSavedComponents() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = JSON.parse(raw || "[]");
-
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -39,40 +39,68 @@ function stopFlowInteraction(event) {
   event.stopPropagation();
 }
 
+const BACKEND_TYPE_TO_FIELD = {
+  string: "text",
+  number: "number",
+  integer: "number",
+  boolean: "toggle",
+};
+
+function backendTypeToComponent(bt) {
+  const inputs = Object.entries(bt.ports?.inputs || {}).map(([name, def]) => ({
+    id: `in-${name}`,
+    label: name,
+    type: def.type || "any",
+    description: def.required ? `${def.type} (required)` : `${def.type}`,
+  }));
+  const outputs = Object.entries(bt.ports?.outputs || {}).map(
+    ([name, def]) => ({
+      id: `out-${name}`,
+      label: name,
+      type: def.type || "any",
+      description: `Output: ${def.type}`,
+    }),
+  );
+  const fields = Object.entries(bt.args_schema || {}).map(([name, def]) => {
+    const fieldType = BACKEND_TYPE_TO_FIELD[def.type] || "text";
+    return {
+      id: `field-${name}`,
+      label: name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      type: fieldType,
+      value:
+        def.default ??
+        (fieldType === "number" ? 0 : fieldType === "toggle" ? false : ""),
+      description: `Type: ${def.type}${def.default !== undefined ? `, default: ${def.default}` : ""}`,
+    };
+  });
+
+  return {
+    id: makeId("backend-comp"),
+    name: bt.label || bt.node_type,
+    description: bt.description || bt.node_type,
+    fields,
+    inputs,
+    outputs,
+    savedAt: new Date().toISOString(),
+    _backendRef: bt.node_type,
+    _backendDef: bt,
+  };
+}
+
 function toContractName(value, fallback = "value") {
   const cleaned = String(value || fallback)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9&]+/g, "_")
     .replace(/^_+|_+$/g, "");
-
   return cleaned || fallback;
 }
 
-function buildPortNameMap(ports = [], fallback) {
-  const seen = new Map();
-  const names = new Map();
-
-  ports.forEach((port, index) => {
-    const base = toContractName(port.label || port.id, `${fallback}_${index + 1}`);
-    const count = (seen.get(base) || 0) + 1;
-    seen.set(base, count);
-    names.set(port.id, count === 1 ? base : `${base}_${count}`);
-  });
-
-  return names;
-}
-
-function getComponentContract(component) {
-  return {
-    nodeType: toContractName(component.name, "node"),
-    inputs: buildPortNameMap(component.inputs || [], "input"),
-    outputs: buildPortNameMap(component.outputs || [], "output")
-  };
-}
-
 function normalizePortType(type) {
-  const value = String(type || "any").trim().toLowerCase().replace(/\s+/g, "");
+  const value = String(type || "any")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
   const aliases = {
     str: "string",
     text: "string",
@@ -80,72 +108,47 @@ function normalizePortType(type) {
     bool: "boolean",
     toggle: "boolean",
     checkbox: "boolean",
-    integer: "int"
+    integer: "int",
   };
-
   return aliases[value] || value || "any";
 }
 
 function arePortTypesCompatible(sourceType, targetType) {
   const source = normalizePortType(sourceType);
   const target = normalizePortType(targetType);
-
   return (
     source === "any" ||
     target === "any" ||
     source === target ||
     (target === "number" && (source === "int" || source === "float")) ||
-    (target === "float" && (source === "int" || source === "number"))
+    (target === "float" && (source === "int" || source === "number")) ||
+    (target === "number" && source === "integer")
   );
 }
 
-function summarizeRunMessage(message) {
-  if (message.type === "run_accepted") {
-    return `Run accepted: ${message.run_id}`;
-  }
-
-  if (message.type === "run_rejected") {
+function summarizeMessage(message) {
+  if (message.type === "node_types")
+    return `Backend ready: ${message.node_types?.length || 0} node types`;
+  if (message.type === "run_accepted") return `Run accepted: ${message.run_id}`;
+  if (message.type === "run_rejected")
     return `Run rejected: ${(message.errors || []).join("; ")}`;
-  }
-
-  if (message.type === "run_finished") {
+  if (message.type === "run_finished")
     return `Run ${message.state?.status || "finished"}`;
-  }
-
-  if (message.type === "execution_state") {
-    const label = message.node_id ? `${message.event} (${message.node_id.slice(0, 12)})` : message.event;
-    return `${label}: ${message.state?.status || "running"}`;
-  }
-
-  if (message.type === "error") {
-    return `Backend error: ${message.message}`;
-  }
-
-  return "Backend connected";
+  if (message.type === "error") return `Backend error: ${message.message}`;
+  return `Message: ${message.type}`;
 }
 
-/* ── Memoized individual field input ─────────────────────────── */
 const FlowFieldInput = memo(({ field, onChange }) => {
   const [uploading, setUploading] = useState(false);
 
   const uploadFile = async (file) => {
     if (!file) return;
-
     setUploading(true);
-
     try {
       const body = new FormData();
       body.append("file", file);
-
-      const response = await fetch("/api/files", {
-        method: "POST",
-        body
-      });
-
-      if (!response.ok) {
-        throw new Error("Upload failed");
-      }
-
+      const response = await fetch("/api/files", { method: "POST", body });
+      if (!response.ok) throw new Error("Upload failed");
       const result = await response.json();
       onChange(result.name);
     } finally {
@@ -157,7 +160,7 @@ const FlowFieldInput = memo(({ field, onChange }) => {
     className: "flow-field-control nodrag nopan",
     onPointerDown: stopFlowInteraction,
     onMouseDown: stopFlowInteraction,
-    onClick: stopFlowInteraction
+    onClick: stopFlowInteraction,
   };
 
   if (field.type === "number") {
@@ -166,11 +169,10 @@ const FlowFieldInput = memo(({ field, onChange }) => {
         {...controlProps}
         type="number"
         value={field.value ?? 0}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onChange={(e) => onChange(Number(e.target.value))}
       />
     );
   }
-
   if (field.type === "toggle" || field.type === "checkbox") {
     return (
       <button
@@ -179,8 +181,8 @@ const FlowFieldInput = memo(({ field, onChange }) => {
         aria-pressed={Boolean(field.value)}
         onPointerDown={stopFlowInteraction}
         onMouseDown={stopFlowInteraction}
-        onClick={(event) => {
-          stopFlowInteraction(event);
+        onClick={(e) => {
+          stopFlowInteraction(e);
           onChange(!field.value);
         }}
       >
@@ -188,13 +190,12 @@ const FlowFieldInput = memo(({ field, onChange }) => {
       </button>
     );
   }
-
   if (field.type === "select") {
     return (
       <select
         {...controlProps}
         value={field.value ?? "Option A"}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(e) => onChange(e.target.value)}
       >
         <option>Option A</option>
         <option>Option B</option>
@@ -202,18 +203,16 @@ const FlowFieldInput = memo(({ field, onChange }) => {
       </select>
     );
   }
-
   if (field.type === "textarea") {
     return (
       <textarea
         {...controlProps}
         value={field.value ?? ""}
         rows="3"
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(e) => onChange(e.target.value)}
       />
     );
   }
-
   if (field.type === "file") {
     return (
       <label
@@ -222,38 +221,37 @@ const FlowFieldInput = memo(({ field, onChange }) => {
         onMouseDown={stopFlowInteraction}
         onClick={stopFlowInteraction}
       >
-        <input type="file" onChange={(event) => uploadFile(event.target.files?.[0])} />
+        <input type="file" onChange={(e) => uploadFile(e.target.files?.[0])} />
         <span>{uploading ? "Uploading..." : field.value || "Choose file"}</span>
       </label>
     );
   }
-
   return (
     <input
       {...controlProps}
       type="text"
       value={field.value ?? ""}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={(e) => onChange(e.target.value)}
     />
   );
 });
 
-/* ── Memoized single field row ───────────────────────────────── */
 const FlowFieldRow = memo(({ field, nodeId, onFieldChange }) => {
   const handleChange = useCallback(
     (value) => onFieldChange(nodeId, field.id, value),
-    [onFieldChange, nodeId, field.id]
+    [onFieldChange, nodeId, field.id],
   );
-
   return (
-    <div className="generated-field-row flow-field-row" title={field.description}>
+    <div
+      className="generated-field-row flow-field-row"
+      title={field.description}
+    >
       <span>{field.label}</span>
       <FlowFieldInput field={field} onChange={handleChange} />
     </div>
   );
 });
 
-/* ── Memoized port rows ──────────────────────────────────────── */
 const InputPortRow = memo(({ port }) => (
   <div className="generated-port-row" title={port.description}>
     <Handle type="target" id={port.id} position={Position.Left} />
@@ -270,27 +268,30 @@ const OutputPortRow = memo(({ port }) => (
   </div>
 ));
 
-/* ── The main node component ─────────────────────────────────── */
 const SavedComponentNode = memo(({ id, data }) => {
   const component = data.component;
   const fields = component.fields || [];
   const inputs = component.inputs || [];
   const outputs = component.outputs || [];
+  const status = data.nodeStatus;
+  const brandColor = component._backendDef?.ui_config?.color;
 
   return (
-    <article className="generated-component-node" title={component.description}>
+    <article
+      className={`generated-component-node${status ? ` status-${status}` : ""}`}
+      style={brandColor && !status ? { borderColor: brandColor } : undefined}
+      title={component.description}
+    >
       <header className="generated-component-header">
         <strong>{component.name}</strong>
         <span>{component.description}</span>
       </header>
-
       <div className="generated-component-body">
         <div className="generated-port-list">
           {inputs.map((port) => (
             <InputPortRow key={port.id} port={port} />
           ))}
         </div>
-
         <div className="generated-field-list">
           {fields.map((field) => (
             <FlowFieldRow
@@ -301,7 +302,6 @@ const SavedComponentNode = memo(({ id, data }) => {
             />
           ))}
         </div>
-
         <div className="generated-port-list">
           {outputs.map((port) => (
             <OutputPortRow key={port.id} port={port} />
@@ -312,145 +312,251 @@ const SavedComponentNode = memo(({ id, data }) => {
   );
 });
 
-/* ── Memoized toolbar to avoid re-render on every node/edge change */
-const FlowToolbar = memo(({ savedComponents, selectedComponentId, onSelectComponent, onRefresh, onAdd, hasSelected, onRun, isRunning, runStatus }) => (
-  <div className="flow-toolbar">
-    <div>
-      <span>Flow canvas</span>
-      <strong>Build a pipeline from saved components</strong>
-      <small className="flow-run-status">{runStatus}</small>
+const FlowToolbar = memo(
+  ({
+    components,
+    selectedId,
+    onSelect,
+    onRefresh,
+    onAdd,
+    onFetchBackend,
+    hasSelected,
+    onRun,
+    isRunning,
+    status,
+  }) => (
+    <div className="flow-toolbar">
+      <div>
+        <span>Flow canvas</span>
+        <strong>Build a pipeline</strong>
+        <small className="flow-run-status">{status}</small>
+      </div>
+      <div className="flow-library">
+        <select
+          value={selectedId}
+          onChange={(e) => onSelect(e.target.value)}
+          disabled={!components.length}
+        >
+          {components.length ? (
+            components.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c._backendRef ? " ⚡" : ""}
+              </option>
+            ))
+          ) : (
+            <option>No components loaded</option>
+          )}
+        </select>
+        <button type="button" onClick={onRefresh}>
+          Refresh Local
+        </button>
+        <button type="button" onClick={onFetchBackend}>
+          Fetch from Backend
+        </button>
+        <button type="button" onClick={onAdd} disabled={!hasSelected}>
+          Add
+        </button>
+        <button
+          type="button"
+          className="run-button"
+          onClick={onRun}
+          disabled={isRunning}
+          style={{ background: "#3b82f6", color: "white", fontWeight: "bold" }}
+        >
+          {isRunning ? "Running..." : "Run Flow"}
+        </button>
+      </div>
     </div>
+  ),
+);
 
-    <div className="flow-library">
-      <select
-        value={selectedComponentId}
-        onChange={(event) => onSelectComponent(event.target.value)}
-        disabled={!savedComponents.length}
-      >
-        {savedComponents.length ? (
-          savedComponents.map((component) => (
-            <option key={component.id} value={component.id}>
-              {component.name}
-            </option>
-          ))
-        ) : (
-          <option>No saved components</option>
-        )}
-      </select>
-      <button type="button" onClick={onRefresh}>
-        Refresh
-      </button>
-      <button type="button" onClick={onAdd} disabled={!hasSelected}>
-        Add Component
-      </button>
-      <button type="button" className="run-button" onClick={onRun} disabled={isRunning} style={{ background: '#3b82f6', color: 'white', fontWeight: 'bold' }}>
-        {isRunning ? "Running..." : "Run Flow"}
-      </button>
-    </div>
-  </div>
-));
-
-/* ── Default edge options (stable ref) ───────────────────────── */
 const defaultEdgeOptions = { animated: false, zIndex: 50 };
 
 export default function Flow() {
-  const [savedComponents, setSavedComponents] = useState(loadSavedComponents);
-  const [selectedComponentId, setSelectedComponentId] = useState(savedComponents[0]?.id || "");
+  const [allComponents, setAllComponents] = useState(() => {
+    const local = loadSavedComponents();
+    return local.length ? local : [];
+  });
+  const [selectedId, setSelectedId] = useState(allComponents[0]?.id || "");
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
-  const [runStatus, setRunStatus] = useState("Backend idle");
+  const [status, setStatus] = useState("Backend idle");
   const [isRunning, setIsRunning] = useState(false);
+  const wsRef = useRef(null);
 
-  // Keep a ref to current nodes/edges so runFlow never causes re-renders
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
 
-  const updateNodeField = useCallback((nodeId, fieldId, value) => {
-    setNodes((currentNodes) =>
-      currentNodes.map((node) => {
-        if (node.id !== nodeId) return node;
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close(1000, "unmount");
+        wsRef.current = null;
+      }
+    };
+  }, []);
 
+  const updateNodeField = useCallback((nodeId, fieldId, value) => {
+    setNodes((current) =>
+      current.map((node) => {
+        if (node.id !== nodeId) return node;
         return {
           ...node,
           data: {
             ...node.data,
             component: {
               ...node.data.component,
-              fields: (node.data.component.fields || []).map((field) =>
-                field.id === fieldId ? { ...field, value } : field
-              )
-            }
-          }
+              fields: (node.data.component.fields || []).map((f) =>
+                f.id === fieldId ? { ...f, value } : f,
+              ),
+            },
+          },
         };
-      })
+      }),
     );
   }, []);
 
-  const nodeTypes = useMemo(
-    () => ({
-      savedComponent: SavedComponentNode
-    }),
-    []
-  );
+  const nodeTypes = useMemo(() => ({ savedComponent: SavedComponentNode }), []);
 
-  const selectedComponent = savedComponents.find((component) => component.id === selectedComponentId);
+  const selected = allComponents.find((c) => c.id === selectedId);
+
+  const mergeBackendComponents = useCallback((backendTypes) => {
+    const local = loadSavedComponents();
+    const backend = (backendTypes || []).map(backendTypeToComponent);
+    const merged = [...backend];
+    for (const lc of local) {
+      if (!merged.some((m) => m.name === lc.name && !m._backendRef)) {
+        merged.push(lc);
+      }
+    }
+    setAllComponents(merged);
+    setSelectedId((cur) =>
+      merged.some((c) => c.id === cur) ? cur : merged[0]?.id || "",
+    );
+  }, []);
+
+  const fetchFromBackend = useCallback(() => {
+    setStatus("Connecting to backend...");
+    const socket = new WebSocket(BACKEND_WS_URL);
+    const timeout = setTimeout(() => {
+      socket.close(1000, "timeout");
+      setStatus("Backend connection timed out");
+    }, 5000);
+
+    socket.addEventListener("open", () => {
+      socket.send(JSON.stringify({ type: "get_node_types" }));
+    });
+
+    socket.addEventListener("message", (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "node_types") {
+        clearTimeout(timeout);
+        mergeBackendComponents(msg.node_types);
+        setStatus(`Backend ready: ${msg.node_types.length} node types`);
+        socket.close(1000, "done");
+      } else if (msg.type === "pong") {
+      }
+    });
+
+    socket.addEventListener("error", () => {
+      clearTimeout(timeout);
+      setStatus("Cannot reach backend");
+    });
+
+    socket.addEventListener("close", () => {
+      clearTimeout(timeout);
+    });
+  }, [mergeBackendComponents]);
 
   const refreshSavedComponents = useCallback(() => {
-    const nextComponents = loadSavedComponents();
-    setSavedComponents(nextComponents);
-    setSelectedComponentId((currentId) => {
-      if (nextComponents.some((component) => component.id === currentId)) {
-        return currentId;
+    const local = loadSavedComponents();
+    setAllComponents((prev) => {
+      const noBackend = prev.filter((c) => c._backendRef);
+      const merged = [...noBackend];
+      for (const lc of local) {
+        if (!merged.some((m) => m.name === lc.name && m.id === lc.id)) {
+          merged.push(lc);
+        }
       }
-
-      return nextComponents[0]?.id || "";
+      return merged;
+    });
+    setSelectedId((cur) => {
+      const updated = loadSavedComponents();
+      if (updated.some((c) => c.id === cur)) return cur;
+      return updated[0]?.id || "";
     });
   }, []);
 
-  const addSelectedComponent = useCallback(() => {
-    if (!selectedComponent) return;
+function makePortMap(component) {
+  const inputs = {};
+  for (const p of component.inputs || []) {
+    inputs[p.id] = p.label;
+  }
+  const outputs = {};
+  for (const p of component.outputs || []) {
+    outputs[p.id] = p.label;
+  }
+  return { inputs, outputs };
+}
 
-    setNodes((currentNodes) => [
-      ...currentNodes,
+  const addSelectedComponent = useCallback(() => {
+    if (!selected) return;
+    const comp = cloneComponent(selected);
+    setNodes((current) => [
+      ...current,
       {
         id: makeId("flow-node"),
         type: "savedComponent",
         position: {
-          x: 120 + currentNodes.length * 38,
-          y: 120 + currentNodes.length * 28
+          x: 120 + current.length * 38,
+          y: 120 + current.length * 28,
         },
         data: {
-          component: cloneComponent(selectedComponent),
-          onFieldChange: updateNodeField
-        }
-      }
+          component: comp,
+          onFieldChange: updateNodeField,
+          _nodeType: selected._backendRef || null,
+          _portMap: makePortMap(comp),
+        },
+      },
     ]);
-  }, [selectedComponent, updateNodeField]);
+  }, [selected, updateNodeField]);
 
   const onNodesChange = useCallback((changes) => {
-    setNodes((currentNodes) => applyNodeChanges(changes, currentNodes));
+    setNodes((current) => applyNodeChanges(changes, current));
   }, []);
 
   const onEdgesChange = useCallback((changes) => {
-    setEdges((currentEdges) => applyEdgeChanges(changes, currentEdges));
+    setEdges((current) => applyEdgeChanges(changes, current));
   }, []);
 
   const onConnect = useCallback((params) => {
-    const currentNodes = nodesRef.current;
-    const sourceNode = currentNodes.find((node) => node.id === params.source);
-    const targetNode = currentNodes.find((node) => node.id === params.target);
-    const sourcePort = sourceNode?.data.component.outputs?.find((port) => port.id === params.sourceHandle);
-    const targetPort = targetNode?.data.component.inputs?.find((port) => port.id === params.targetHandle);
-
-    if (sourcePort && targetPort && !arePortTypesCompatible(sourcePort.type, targetPort.type)) {
-      setRunStatus(`Cannot connect ${sourcePort.type || "any"} to ${targetPort.type || "any"}`);
+    const current = nodesRef.current;
+    const src = current.find((n) => n.id === params.source);
+    const tgt = current.find((n) => n.id === params.target);
+    const srcPort = src?.data.component.outputs?.find(
+      (p) => p.id === params.sourceHandle,
+    );
+    const tgtPort = tgt?.data.component.inputs?.find(
+      (p) => p.id === params.targetHandle,
+    );
+    if (
+      srcPort &&
+      tgtPort &&
+      !arePortTypesCompatible(srcPort.type, tgtPort.type)
+    ) {
+      setStatus(`Type mismatch: ${srcPort.type} → ${tgtPort.type}`);
       return;
     }
-
-    setEdges((currentEdges) => {
-      const filtered = currentEdges.filter(e => !(e.target === params.target && e.targetHandle === params.targetHandle));
+    setEdges((current) => {
+      const filtered = current.filter(
+        (e) =>
+          !(
+            e.target === params.target && e.targetHandle === params.targetHandle
+          ),
+      );
       return addEdge(params, filtered);
     });
   }, []);
@@ -458,140 +564,230 @@ export default function Flow() {
   const runFlow = useCallback(async () => {
     const currentNodes = nodesRef.current;
     const currentEdges = edgesRef.current;
-
     if (!currentNodes.length) {
-      setRunStatus("Add at least one node before running.");
+      setStatus("Add at least one node first");
       return;
     }
 
     const runPayload = {
       run_id: makeId("run"),
-      flow_id: "flow_abc123", // Static for now
+      flow_id: "flow_abc123",
       schema_version: 1,
       flow_revision: 1,
       created_at: new Date().toISOString(),
       execution_config: {
-        timeout_seconds: Number(import.meta.env.VITE_EXECUTION_TIMEOUT_SECONDS || 120),
-        on_node_failure: import.meta.env.VITE_EXECUTION_ON_NODE_FAILURE || "halt",
-        max_retries: Number(import.meta.env.VITE_EXECUTION_MAX_RETRIES || 0)
+        timeout_seconds: Number(
+          import.meta.env.VITE_EXECUTION_TIMEOUT_SECONDS || 120,
+        ),
+        on_node_failure:
+          import.meta.env.VITE_EXECUTION_ON_NODE_FAILURE || "halt",
+        max_retries: Number(import.meta.env.VITE_EXECUTION_MAX_RETRIES || 0),
       },
       nodes: currentNodes.reduce((acc, node) => {
         const comp = node.data.component;
-        const contract = getComponentContract(comp);
+        const nodeType =
+          node.data._nodeType || toContractName(comp.name, "node");
         const args = {};
         let cache = false;
-        
+
         if (comp.fields) {
-          comp.fields.forEach(f => {
-            const labelLower = f.label.toLowerCase();
-            if (labelLower === "use cache" || f.id === "field-cache") {
+          comp.fields.forEach((f) => {
+            const lower = f.label.toLowerCase();
+            if (lower === "use cache" || f.id === "field-cache") {
               cache = Boolean(f.value);
             } else {
-              const argName = toContractName(f.label, "arg");
-              args[argName] = f.value;
+              args[toContractName(f.label, "arg")] = f.value;
             }
           });
         }
 
-        acc[node.id] = {
-          node_type: contract.nodeType,
-          args,
-          config: { cache }
-        };
+        acc[node.id] = { node_type: nodeType, args, config: { cache } };
         return acc;
       }, {}),
-      edges: currentEdges.map(edge => {
-        const sourceNode = currentNodes.find(n => n.id === edge.source);
-        const targetNode = currentNodes.find(n => n.id === edge.target);
-        
-        let fromPortName = edge.sourceHandle;
-        if (sourceNode) {
-           const contract = getComponentContract(sourceNode.data.component);
-           fromPortName = contract.outputs.get(edge.sourceHandle) || fromPortName;
-        }
-
-        let toPortName = edge.targetHandle;
-        if (targetNode) {
-           const contract = getComponentContract(targetNode.data.component);
-           toPortName = contract.inputs.get(edge.targetHandle) || toPortName;
-        }
-
+      edges: currentEdges.map((edge) => {
+        const src = currentNodes.find((n) => n.id === edge.source);
+        const tgt = currentNodes.find((n) => n.id === edge.target);
+        const srcMap = src?.data?._portMap?.outputs || {};
+        const tgtMap = tgt?.data?._portMap?.inputs || {};
         return {
           id: edge.id,
           from: edge.source,
-          from_port: fromPortName,
+          from_port: srcMap[edge.sourceHandle] || edge.sourceHandle,
           to: edge.target,
-          to_port: toPortName
+          to_port: tgtMap[edge.targetHandle] || edge.targetHandle,
         };
-      })
+      }),
     };
 
-    console.log("Run Payload:", JSON.stringify(runPayload, null, 2));
     setIsRunning(true);
-    setRunStatus("Connecting to backend...");
+    setStatus("Connecting to backend...");
 
+    let resultMsg = null;
     try {
-      await new Promise((resolve, reject) => {
+      resultMsg = await new Promise((resolve, reject) => {
         const socket = new WebSocket(BACKEND_WS_URL);
         let settled = false;
-
-        const finish = (callback, value) => {
+        const finish = (cb, val) => {
           if (settled) return;
           settled = true;
-          socket.close(1000, "run complete");
-          callback(value);
+          socket.close(1000, "done");
+          cb(val);
         };
 
         socket.addEventListener("open", () => {
+          console.log("payload: ", runPayload);
           socket.send(JSON.stringify({ type: "run", payload: runPayload }));
         });
 
         socket.addEventListener("message", (event) => {
-          const message = JSON.parse(event.data);
-          console.log("Backend Message:", message);
-          setRunStatus(summarizeRunMessage(message));
-
-          if (message.type === "run_rejected" || message.type === "error") {
-            finish(reject, new Error(summarizeRunMessage(message)));
+          const msg = JSON.parse(event.data);
+          console.log("Backend:", msg);
+          setStatus(summarizeMessage(msg));
+          if (msg.type === "run_accepted") {
+            setNodes((current) =>
+              current.map((node) => ({
+                ...node,
+                data: { ...node.data, nodeStatus: "pending" },
+              }))
+            );
           }
-
-          if (message.type === "run_finished") {
-            finish(resolve, message);
+          if (msg.type === "node_status") {
+            setNodes((current) =>
+              current.map((node) =>
+                node.id === msg.node_id
+                  ? { ...node, data: { ...node.data, nodeStatus: msg.status } }
+                  : node
+              )
+            );
+          }
+          if (msg.type === "run_rejected" || msg.type === "error") {
+            setNodes((current) =>
+              current.map((node) => ({
+                ...node,
+                data: { ...node.data, nodeStatus: null },
+              }))
+            );
+            finish(reject, new Error(summarizeMessage(msg)));
+          }
+          if (msg.type === "run_finished") {
+            finish(resolve, msg);
           }
         });
 
         socket.addEventListener("error", () => {
-          finish(reject, new Error(`Could not connect to backend at ${BACKEND_WS_URL}`));
+          finish(reject, new Error(`Cannot connect to ${BACKEND_WS_URL}`));
         });
 
         socket.addEventListener("close", () => {
-          if (!settled) {
-            finish(reject, new Error("Backend connection closed before the run finished"));
-          }
+          if (!settled)
+            finish(reject, new Error("Connection closed before run finished"));
         });
       });
-    } catch (error) {
-      console.error("Error running flow:", error);
-      setRunStatus(error.message || "Failed to run flow");
-    } finally {
+    } catch (err) {
+      console.error("Run error:", err);
+      setStatus(err.message || "Run failed");
+      setNodes((current) =>
+        current.map((node) => ({
+          ...node,
+          data: { ...node.data, nodeStatus: null },
+        }))
+      );
       setIsRunning(false);
+      return;
     }
-  }, []); // No deps — reads from refs
+
+    if (resultMsg?.state?.status === "completed") {
+      console.log("═ BERTFLOW RUN RESULTS ═══════════════════════════");
+      console.log(`run_id: ${resultMsg.run_id}`);
+      console.log(`status: ${resultMsg.state.status}`);
+
+      const refsToResolve = [];
+      for (const [nid, ns] of Object.entries(resultMsg.state.node_states)) {
+        console.log(`── Node: ${nid} (${ns.status})${ns.cached ? " [cached]" : ""}`);
+        for (const [key, val] of Object.entries(ns.outputs || {})) {
+          const preview = typeof val === "string" ? val.slice(0, 120) : JSON.stringify(val).slice(0, 120);
+          const isRef = typeof val === "string" && val.startsWith("store://");
+          console.log(`  ${key} => ${isRef ? "REF: " + val : "INLINE: " + preview}`);
+          if (isRef) refsToResolve.push(val);
+        }
+      }
+
+      if (refsToResolve.length > 0) {
+        console.log(`── Resolving ${refsToResolve.length} ref(s) from backend...`);
+        try {
+          const resolved = await new Promise((resolve, reject) => {
+            const socket = new WebSocket(BACKEND_WS_URL);
+            let settled = false;
+            const finish = (cb, val) => {
+              if (settled) return;
+              settled = true;
+              socket.close(1000, "done");
+              cb(val);
+            };
+            socket.addEventListener("open", () => {
+              socket.send(JSON.stringify({ type: "resolve_refs", refs: refsToResolve }));
+            });
+            socket.addEventListener("message", (event) => {
+              const msg = JSON.parse(event.data);
+              if (msg.type === "refs_resolved") finish(resolve, msg.values);
+            });
+            socket.addEventListener("error", () => finish(reject, new Error("Failed to resolve refs")));
+            socket.addEventListener("close", () => { if (!settled) finish(resolve, {}); });
+          });
+
+          for (const ns of Object.values(resultMsg.state.node_states)) {
+            for (const [key, val] of Object.entries(ns.outputs || {})) {
+              if (typeof val === "string" && resolved[val] !== undefined) {
+                ns.outputs[key] = resolved[val];
+              }
+            }
+          }
+
+          console.log("── Resolved values:");
+          for (const [nid, ns] of Object.entries(resultMsg.state.node_states)) {
+            for (const [key, val] of Object.entries(ns.outputs || {})) {
+              const preview = typeof val === "string" ? val.slice(0, 200) : JSON.stringify(val).slice(0, 200);
+              console.log(`  ${nid}.${key} = ${preview}`);
+            }
+          }
+        } catch (e) {
+          console.log("── Ref resolution failed:", e);
+        }
+      }
+
+      console.log("══════════════════════════════════════════════════");
+      const counts = Object.values(resultMsg.state.node_states).map(
+        (ns) => `${ns.node_id?.slice(0, 8) || "?"}:${ns.status}`
+      ).join(", ");
+      setStatus(`Run completed — ${counts}`);
+    } else {
+      setStatus(resultMsg?.state?.error || "Run failed");
+    }
+    if (resultMsg?.state?.node_states) {
+      setNodes((current) =>
+        current.map((node) => ({
+          ...node,
+          data: { ...node.data, nodeStatus: resultMsg.state.node_states[node.id]?.status || null },
+        }))
+      );
+    }
+    setIsRunning(false);
+  }, []);
 
   return (
     <main className="flow-page">
       <FlowToolbar
-        savedComponents={savedComponents}
-        selectedComponentId={selectedComponentId}
-        onSelectComponent={setSelectedComponentId}
+        components={allComponents}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
         onRefresh={refreshSavedComponents}
+        onFetchBackend={fetchFromBackend}
         onAdd={addSelectedComponent}
-        hasSelected={!!selectedComponent}
+        hasSelected={!!selected}
         onRun={runFlow}
         isRunning={isRunning}
-        runStatus={runStatus}
+        status={status}
       />
-
       <ReactFlow
         nodes={nodes}
         edges={edges}

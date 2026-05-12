@@ -704,14 +704,31 @@ function App() {
   );
 }
 
+const MODE_KEY = "bertflow.mode";
+
+function getInitialMode() {
+  const fromHash = location.hash.replace("#", "");
+  if (fromHash === "flow" || fromHash === "builder") return fromHash;
+  try {
+    const saved = localStorage.getItem(MODE_KEY);
+    if (saved === "flow" || saved === "builder") return saved;
+  } catch {}
+  return "builder";
+}
+
 function Root() {
-  const [mode, setMode] = useState("builder");
+  const [mode, setMode] = useState(getInitialMode);
+
+  useEffect(() => {
+    location.hash = mode;
+    try { localStorage.setItem(MODE_KEY, mode); } catch {}
+  }, [mode]);
 
   return (
     <>
       <div className="mode-switch">
-        <button onClick={() => setMode("builder")}>Builder</button>
-        <button onClick={() => setMode("flow")}>Flow</button>
+        <button className={mode === "builder" ? "active" : ""} onClick={() => setMode("builder")}>Builder</button>
+        <button className={mode === "flow" ? "active" : ""} onClick={() => setMode("flow")}>Flow</button>
       </div>
 
       {mode === "builder" ? <App /> : <Flow />}

@@ -1,204 +1,172 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
-from collections.abc import Awaitable, Callable
-from typing import Any
+import time
+from collections import defaultdict, deque
+from typing import Awaitable, Callable
 
-from .errors import GraphValidationError, NodeExecutionError
-from .models import ExecutionState, NodeState, RunRequest, now_iso
-from .registry import NodeContext, NodeRegistry
-from .result_store import InMemoryExecutionCache, InMemoryResultStore
-from .types import value_matches_type
-from .validator import GraphPlan, validate_run_request
-
-EventSink = Callable[[dict[str, Any]], Awaitable[None]]
+from backend.core.errors import NodeExecutionError
+from backend.core.logging import logger
+from backend.core.models import ExecutionState, NodeState, RunRequest
+from backend.core.registry import NodeRegistry
+from backend.core.result_store import InMemoryExecutionCache, InMemoryResultStore
 
 
 class AsyncGraphExecutor:
     def __init__(
         self,
         registry: NodeRegistry,
-        result_store: InMemoryResultStore | None = None,
+        store: InMemoryResultStore | None = None,
         cache: InMemoryExecutionCache | None = None,
-        event_sink: EventSink | None = None,
     ) -> None:
-        self.registry = registry
-        self.result_store = result_store or InMemoryResultStore()
-        self.cache = cache or InMemoryExecutionCache()
-        self.event_sink = event_sink
+        self._registry = registry
+        self._store = store or InMemoryResultStore()
+        self._cache = cache or InMemoryExecutionCache()
 
-    async def execute(self, request: RunRequest | dict[str, Any]) -> ExecutionState:
-        if isinstance(request, dict):
-            request = RunRequest.from_dict(request)
+    async def execute(self, request: RunRequest, on_node_status: Callable[[str, str, str | None], Awaitable[None]] | None = None) -> ExecutionState:
+        state = ExecutionState(run_id=request.run_id, status="running")
+        node_states: dict[str, NodeState] = {}
+        for nid, node in request.nodes.items():
+            node_states[nid] = NodeState(node_id=nid, node_type=node.node_type)
+        state.node_states = node_states
 
-        plan = validate_run_request(request, self.registry)
-        state = ExecutionState.for_request(request)
-        state.status = "running"
-        state.started_at = now_iso()
-        await self._emit("run_started", state, connected_components=plan.connected_components)
+        adj: dict[str, list[tuple[str, str, str]]] = {nid: [] for nid in request.nodes}
+        in_deg: dict[str, int] = {nid: 0 for nid in request.nodes}
+        for edge in request.edges:
+            adj.setdefault(edge.source, []).append((edge.target, edge.source_port, edge.target_port))
+            in_deg[edge.target] = in_deg.get(edge.target, 0) + 1
 
-        remaining_deps = {node_id: set(upstream) for node_id, upstream in plan.dependencies.items()}
-        ready = sorted(node_id for node_id, upstream in remaining_deps.items() if not upstream)
-        halted = False
+        output_map: dict[str, dict[str, str]] = defaultdict(dict)
+        node_inputs: dict[str, dict[str, object]] = defaultdict(dict)
 
-        while ready and not halted:
-            wave = ready
-            ready = []
-            await self._emit("wave_started", state, nodes=wave)
-            await asyncio.gather(*(self._run_or_skip_node(request, plan, state, node_id) for node_id in wave))
+        ready: deque[str] = deque(nid for nid, d in in_deg.items() if d == 0)
+        pending = len(request.nodes)
 
-            failed_in_wave = any(state.node_states[node_id].status == "failed" for node_id in wave)
-            if failed_in_wave and request.execution_config.on_node_failure == "halt":
-                halted = True
-                break
+        timeout = request.execution_config.timeout_seconds
+        fail_mode = request.execution_config.on_node_failure
+        max_retries = request.execution_config.max_retries
 
-            for node_id in wave:
-                remaining_deps.pop(node_id, None)
-                for child_id in sorted(plan.dependents[node_id]):
-                    if child_id in remaining_deps:
-                        remaining_deps[child_id].discard(node_id)
-                        if not remaining_deps[child_id] and child_id not in ready:
-                            ready.append(child_id)
-            ready.sort()
+        try:
+            async with asyncio.timeout(timeout):
+                while ready or pending > 0:
+                    wave = list(ready)
+                    ready.clear()
 
-        if halted:
-            state.status = "failed"
-        else:
-            statuses = [node_state.status for node_state in state.node_states.values()]
-            if any(status == "failed" for status in statuses):
-                state.status = "partial" if request.execution_config.on_node_failure == "skip" else "failed"
-            elif any(status == "skipped" for status in statuses):
-                state.status = "partial"
-            else:
+                    if not wave:
+                        if pending > 0:
+                            remaining = [n for n in request.nodes if node_states[n].status == "pending"]
+                            if remaining:
+                                for nid in remaining:
+                                    node_states[nid].status = "failed"
+                                    node_states[nid].error = "Dependency not satisfied (possible cycle or disconnected)"
+                                    if on_node_status:
+                                        await on_node_status(nid, "failed", node_states[nid].error)
+                                state.status = "failed"
+                                state.error = "Execution stuck: some nodes never became ready"
+                            break
+                        break
+
+                    tasks = []
+                    for nid in wave:
+                        tasks.append(self._run_node(request, nid, node_states, node_inputs, output_map, max_retries, on_node_status))
+
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    for nid, result in zip(wave, results, strict=True):
+                        if isinstance(result, Exception):
+                            node_states[nid].status = "failed"
+                            node_states[nid].error = str(result)
+                            if on_node_status:
+                                await on_node_status(nid, "failed", node_states[nid].error)
+                            if fail_mode == "halt":
+                                state.status = "failed"
+                                state.error = f"Node '{nid}' failed: {result}"
+                                return state
+                            elif fail_mode == "skip":
+                                pass
+                        else:
+                            node_states[nid].status = "completed"
+                            if on_node_status:
+                                await on_node_status(nid, "completed")
+                            if result is not None:
+                                node_states[nid].outputs = self._store.build_outputs(request.run_id, nid, result)
+                                for port_name, val in node_states[nid].outputs.items():
+                                    output_map[nid][port_name] = val
+
+                        pending -= 1
+
+                    new_ready: list[str] = []
+                    for edge in request.edges:
+                        src = edge.source
+                        tgt = edge.target
+                        if node_states[src].status == "completed" and node_states[tgt].status == "pending":
+                            inp = node_states[src].outputs.get(edge.source_port, "")
+                            node_inputs[tgt][edge.target_port] = inp
+                            in_deg[tgt] -= 1
+                            if in_deg[tgt] == 0:
+                                new_ready.append(tgt)
+
+                    ready.extend(nid for nid in new_ready if nid not in ready)
+
+            if state.status == "running":
                 state.status = "completed"
+        except TimeoutError:
+            state.status = "failed"
+            state.error = f"Execution timed out after {timeout}s"
+        except Exception as exc:
+            state.status = "failed"
+            state.error = str(exc)
+            logger.error("Execution error: %s", exc)
 
-        state.completed_at = now_iso()
-        await self._emit("run_completed", state)
         return state
 
-    async def _run_or_skip_node(
+    async def _run_node(
         self,
         request: RunRequest,
-        plan: GraphPlan,
-        state: ExecutionState,
-        node_id: str,
-    ) -> None:
-        node_state = state.node_states[node_id]
-        failed_dependencies = [
-            dependency_id
-            for dependency_id in plan.dependencies[node_id]
-            if state.node_states[dependency_id].status in {"failed", "skipped"}
-        ]
+        nid: str,
+        node_states: dict[str, NodeState],
+        node_inputs: dict[str, dict[str, object]],
+        output_map: dict[str, dict[str, str]],
+        max_retries: int,
+        on_node_status: Callable[[str, str, str | None], Awaitable[None]] | None = None,
+    ) -> dict | None:
+        node = request.nodes[nid]
+        reg = self._registry.get(node.node_type)
+        if reg is None:
+            raise NodeExecutionError(f"Node type '{node.node_type}' not registered")
 
-        if failed_dependencies:
-            node_state.status = "skipped"
-            node_state.error = f"upstream dependency did not complete: {', '.join(sorted(failed_dependencies))}"
-            node_state.completed_at = now_iso()
-            await self._emit("node_skipped", state, node_id=node_id)
-            return
+        node_states[nid].status = "running"
+        node_states[nid].started_at = time.time()
+        if on_node_status:
+            await on_node_status(nid, "running")
 
-        await self._execute_node(request, plan, state, node_id)
+        args = dict(node.args)
+        inputs = dict(node_inputs.get(nid, {}))
 
-    async def _execute_node(
-        self,
-        request: RunRequest,
-        plan: GraphPlan,
-        state: ExecutionState,
-        node_id: str,
-    ) -> None:
-        node = request.nodes[node_id]
-        registered = self.registry.get(node.node_type)
-        node_state = state.node_states[node_id]
-        inputs = {
-            edge.to_port: self.result_store.get(request.run_id, edge.from_node, edge.from_port)
-            for edge in plan.incoming_edges[node_id]
-        }
-        attempts_allowed = request.execution_config.max_retries + 1 if request.execution_config.on_node_failure == "retry" else 1
-
-        for attempt in range(1, attempts_allowed + 1):
-            node_state.status = "running"
-            node_state.started_at = node_state.started_at or now_iso()
-            node_state.attempts = attempt
-            node_state.error = None
-            await self._emit("node_started", state, node_id=node_id)
-
-            try:
-                outputs, cached, cache_key = await self._execute_with_cache(request, node_id, inputs)
-                self._validate_outputs(registered.schema.outputs, outputs, node_id)
-                if node.config.cache and not cached:
-                    self.cache.set(cache_key, outputs)
-                self.result_store.set_node_outputs(request.run_id, node_id, outputs)
-                node_state.outputs = self.result_store.output_refs(request.run_id, node_id, outputs)
-                node_state.cached = cached
-                node_state.status = "completed"
-                node_state.completed_at = now_iso()
-                await self._emit("node_completed", state, node_id=node_id)
-                return
-            except Exception as exc:  # noqa: BLE001 - node boundary must contain all callable failures
-                node_state.error = str(exc)
-                if attempt < attempts_allowed:
-                    await self._emit("node_retrying", state, node_id=node_id)
-                    continue
-                node_state.status = "failed"
-                node_state.completed_at = now_iso()
-                await self._emit("node_failed", state, node_id=node_id)
-
-    async def _execute_with_cache(
-        self,
-        request: RunRequest,
-        node_id: str,
-        inputs: dict[str, Any],
-    ) -> tuple[dict[str, Any], bool, str]:
-        node = request.nodes[node_id]
-
-        cache_key = self.cache.make_key(node.node_type, node.args, inputs)
         if node.config.cache:
-            cached = self.cache.get(cache_key)
+            cached = self._cache.get(node.node_type, args, inputs)
             if cached is not None:
-                return cached, True, cache_key
+                node_states[nid].status = "completed"
+                node_states[nid].cached = True
+                node_states[nid].finished_at = time.time()
+                if on_node_status:
+                    await on_node_status(nid, "completed")
+                logger.info("Cache hit for node %s (%s)", nid, node.node_type)
+                return cached
 
-        registered = self.registry.get(node.node_type)
-        context = NodeContext(
-            run_id=request.run_id,
-            node_id=node_id,
-            node_type=node.node_type,
-            args=node.args,
-            inputs=inputs,
-        )
+        last_error: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                outputs = await reg.run(args, inputs, nid)
+                node_states[nid].finished_at = time.time()
+                if node.config.cache:
+                    self._cache.put(node.node_type, args, inputs, outputs)
+                logger.info("Node %s (%s) completed", nid, node.node_type)
+                return outputs
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Node %s attempt %d failed: %s", nid, attempt + 1, exc)
+                if attempt < max_retries:
+                    await asyncio.sleep(0.1 * (attempt + 1))
 
-        if inspect.iscoroutinefunction(registered.callable):
-            result = registered.callable(context)
-            outputs = await asyncio.wait_for(result, timeout=request.execution_config.timeout_seconds)
-        else:
-            outputs = await asyncio.wait_for(
-                asyncio.to_thread(registered.callable, context),
-                timeout=request.execution_config.timeout_seconds,
-            )
-            if inspect.isawaitable(outputs):
-                outputs = await asyncio.wait_for(outputs, timeout=request.execution_config.timeout_seconds)
-
-        if not isinstance(outputs, dict):
-            raise NodeExecutionError(f"node {node_id} must return an object keyed by output port")
-
-        return outputs, False, cache_key
-
-    def _validate_outputs(self, output_schema: dict[str, Any], outputs: dict[str, Any], node_id: str) -> None:
-        for port_name, port_def in output_schema.items():
-            if port_def.required and port_name not in outputs:
-                raise NodeExecutionError(f"node {node_id} did not return required output {port_name!r}")
-            if port_name in outputs and not value_matches_type(outputs[port_name], port_def.type):
-                raise NodeExecutionError(
-                    f"node {node_id} output {port_name!r} expected {port_def.type}, "
-                    f"got {type(outputs[port_name]).__name__}"
-                )
-
-        for port_name in outputs:
-            if port_name not in output_schema:
-                raise NodeExecutionError(f"node {node_id} returned undeclared output {port_name!r}")
-
-    async def _emit(self, event: str, state: ExecutionState, **extra: Any) -> None:
-        if self.event_sink is None:
-            return
-        payload = {"type": "execution_state", "event": event, "state": state.to_json(), **extra}
-        await self.event_sink(payload)
+        raise NodeExecutionError(f"Node '{nid}' failed after {max_retries + 1} attempt(s): {last_error}")
