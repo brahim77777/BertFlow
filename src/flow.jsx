@@ -268,13 +268,32 @@ const OutputPortRow = memo(({ port }) => (
   </div>
 ));
 
+function previewLines(value, maxLines = 15) {
+  if (value === null || value === undefined) return ["null"];
+  const str =
+    typeof value === "string"
+      ? value
+      : JSON.stringify(value, null, 2);
+  const lines = str.split("\n");
+  if (lines.length <= maxLines) return lines;
+  return [
+    ...lines.slice(0, maxLines),
+    `\n… (${lines.length - maxLines} more lines)`,
+  ];
+}
+
 const SavedComponentNode = memo(({ id, data }) => {
   const component = data.component;
   const fields = component.fields || [];
   const inputs = component.inputs || [];
   const outputs = component.outputs || [];
   const status = data.nodeStatus;
+  const nodeOutputs = data.nodeOutputs;
   const brandColor = component._backendDef?.ui_config?.color;
+  const [showPreview, setShowPreview] = useState(false);
+
+  const hasOutputs =
+    status === "completed" && nodeOutputs && Object.keys(nodeOutputs).length > 0;
 
   return (
     <article
@@ -308,6 +327,56 @@ const SavedComponentNode = memo(({ id, data }) => {
           ))}
         </div>
       </div>
+      {hasOutputs && (
+        <>
+          <button
+            className="output-preview-btn nodrag nopan"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowPreview(true);
+            }}
+            title="Preview outputs"
+          >
+            Preview
+          </button>
+          {showPreview && (
+            <div
+              className="output-modal-backdrop"
+              onClick={() => setShowPreview(false)}
+            >
+              <div
+                className="output-modal-panel"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <header className="output-modal-header">
+                  <strong>{component.name} — Outputs</strong>
+                  <button
+                    className="output-modal-close nodrag nopan"
+                    onClick={() => setShowPreview(false)}
+                  >
+                    ✕
+                  </button>
+                </header>
+                <div className="output-modal-body">
+                  {Object.entries(nodeOutputs).length === 0 && (
+                    <p className="output-modal-empty">No outputs</p>
+                  )}
+                  {Object.entries(nodeOutputs).map(([key, val]) => (
+                    <div className="output-entry" key={key}>
+                      <code className="output-entry-key">{key}</code>
+                      <pre className="output-entry-value">
+                        {previewLines(val, 15).map((line, i) => (
+                          <span key={i}>{line}</span>
+                        ))}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </article>
   );
 });
@@ -767,7 +836,11 @@ function makePortMap(component) {
       setNodes((current) =>
         current.map((node) => ({
           ...node,
-          data: { ...node.data, nodeStatus: resultMsg.state.node_states[node.id]?.status || null },
+          data: {
+            ...node.data,
+            nodeStatus: resultMsg.state.node_states[node.id]?.status || null,
+            nodeOutputs: resultMsg.state.node_states[node.id]?.outputs || null,
+          },
         }))
       );
     }

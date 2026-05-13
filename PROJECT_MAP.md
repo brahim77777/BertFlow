@@ -121,5 +121,5 @@ Then click "Fetch from Backend" in the Flow view to see it appear.
 
 - [ ] force types in the frontend ( string != List[str] ) and string != 100, and the types should be a dropdown list precollected from the backend at first start
 - [ ] add a sync of arg fields from the backend and the frontend ( edge cases like fileuploads)
-- [ ] adding a colored border on the nodes indicating their run status , (green is done, yellow is still running, red it gave an error)
+- [ X ] adding a colored border on the nodes indicating their run status , (green is done, yellow is still running, red it gave an error)
 - [ ] adding a small section in the button right of the components that opens a modal(preview of some sort) that lists the output( first 15 lines).

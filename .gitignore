@@ -44,3 +44,9 @@ out/
 # Other
 time
 *.tex
+json_contracts.md
+presentation_plan.md
+PROJECT_MAP.md
+questions.txt
+full_logic_pipeline.md
+data_flow.md

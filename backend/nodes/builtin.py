@@ -103,7 +103,4 @@ class OutputNode:
 
     @staticmethod
     async def run(args: dict, inputs: dict, context: Any) -> dict:
-        import asyncio
-
-        await asyncio.sleep(10)
         return {}
