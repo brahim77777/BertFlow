@@ -123,3 +123,4 @@ Then click "Fetch from Backend" in the Flow view to see it appear.
 - [ ] add a sync of arg fields from the backend and the frontend ( edge cases like fileuploads)
 - [ X ] adding a colored border on the nodes indicating their run status , (green is done, yellow is still running, red it gave an error)
 - [ ] adding a small section in the button right of the components that opens a modal(preview of some sort) that lists the output( first 15 lines).
+- [ ] adding a logo placeholder in the front-end through the ui-config from the backend

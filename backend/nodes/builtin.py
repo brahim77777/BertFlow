@@ -91,7 +91,7 @@ class OutputNode:
     description = "Terminal output node — prints and discards input"
     category = "io"
     version = "1.0.0"
-    ui_config = {"icon": "terminal", "color": "#059669", "category_order": 0}
+    ui_config = {"icon": "robot", "color": "#059669", "category_order": 0}
 
     inputs = {
         "text": {"type": "string", "required": False},

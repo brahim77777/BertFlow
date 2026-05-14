@@ -271,9 +271,7 @@ const OutputPortRow = memo(({ port }) => (
 function previewLines(value, maxLines = 15) {
   if (value === null || value === undefined) return ["null"];
   const str =
-    typeof value === "string"
-      ? value
-      : JSON.stringify(value, null, 2);
+    typeof value === "string" ? value : JSON.stringify(value, null, 2);
   const lines = str.split("\n");
   if (lines.length <= maxLines) return lines;
   return [
@@ -289,21 +287,34 @@ const SavedComponentNode = memo(({ id, data }) => {
   const outputs = component.outputs || [];
   const status = data.nodeStatus;
   const nodeOutputs = data.nodeOutputs;
-  const brandColor = component._backendDef?.ui_config?.color;
+  const icon = component._backendDef?.ui_config?.icon;
   const [showPreview, setShowPreview] = useState(false);
 
   const hasOutputs =
-    status === "completed" && nodeOutputs && Object.keys(nodeOutputs).length > 0;
+    status === "completed" &&
+    nodeOutputs &&
+    Object.keys(nodeOutputs).length > 0;
 
   return (
     <article
       className={`generated-component-node${status ? ` status-${status}` : ""}`}
-      style={brandColor && !status ? { borderColor: brandColor } : undefined}
       title={component.description}
     >
       <header className="generated-component-header">
-        <strong>{component.name}</strong>
-        <span>{component.description}</span>
+        {icon && (
+          <img
+            src={`/src/assets/icons/${icon}.png`}
+            alt=""
+            className="node-logo"
+            onError={(e) => {
+              e.target.style.display = "none";
+            }}
+          />
+        )}
+        <div>
+          <strong>{component.name}</strong>
+          <span>{component.description}</span>
+        </div>
       </header>
       <div className="generated-component-body">
         <div className="generated-port-list">
@@ -559,17 +570,17 @@ export default function Flow() {
     });
   }, []);
 
-function makePortMap(component) {
-  const inputs = {};
-  for (const p of component.inputs || []) {
-    inputs[p.id] = p.label;
+  function makePortMap(component) {
+    const inputs = {};
+    for (const p of component.inputs || []) {
+      inputs[p.id] = p.label;
+    }
+    const outputs = {};
+    for (const p of component.outputs || []) {
+      outputs[p.id] = p.label;
+    }
+    return { inputs, outputs };
   }
-  const outputs = {};
-  for (const p of component.outputs || []) {
-    outputs[p.id] = p.label;
-  }
-  return { inputs, outputs };
-}
 
   const addSelectedComponent = useCallback(() => {
     if (!selected) return;
@@ -717,7 +728,7 @@ function makePortMap(component) {
               current.map((node) => ({
                 ...node,
                 data: { ...node.data, nodeStatus: "pending" },
-              }))
+              })),
             );
           }
           if (msg.type === "node_status") {
@@ -725,8 +736,8 @@ function makePortMap(component) {
               current.map((node) =>
                 node.id === msg.node_id
                   ? { ...node, data: { ...node.data, nodeStatus: msg.status } }
-                  : node
-              )
+                  : node,
+              ),
             );
           }
           if (msg.type === "run_rejected" || msg.type === "error") {
@@ -734,7 +745,7 @@ function makePortMap(component) {
               current.map((node) => ({
                 ...node,
                 data: { ...node.data, nodeStatus: null },
-              }))
+              })),
             );
             finish(reject, new Error(summarizeMessage(msg)));
           }
@@ -759,7 +770,7 @@ function makePortMap(component) {
         current.map((node) => ({
           ...node,
           data: { ...node.data, nodeStatus: null },
-        }))
+        })),
       );
       setIsRunning(false);
       return;
@@ -772,17 +783,26 @@ function makePortMap(component) {
 
       const refsToResolve = [];
       for (const [nid, ns] of Object.entries(resultMsg.state.node_states)) {
-        console.log(`── Node: ${nid} (${ns.status})${ns.cached ? " [cached]" : ""}`);
+        console.log(
+          `── Node: ${nid} (${ns.status})${ns.cached ? " [cached]" : ""}`,
+        );
         for (const [key, val] of Object.entries(ns.outputs || {})) {
-          const preview = typeof val === "string" ? val.slice(0, 120) : JSON.stringify(val).slice(0, 120);
+          const preview =
+            typeof val === "string"
+              ? val.slice(0, 120)
+              : JSON.stringify(val).slice(0, 120);
           const isRef = typeof val === "string" && val.startsWith("store://");
-          console.log(`  ${key} => ${isRef ? "REF: " + val : "INLINE: " + preview}`);
+          console.log(
+            `  ${key} => ${isRef ? "REF: " + val : "INLINE: " + preview}`,
+          );
           if (isRef) refsToResolve.push(val);
         }
       }
 
       if (refsToResolve.length > 0) {
-        console.log(`── Resolving ${refsToResolve.length} ref(s) from backend...`);
+        console.log(
+          `── Resolving ${refsToResolve.length} ref(s) from backend...`,
+        );
         try {
           const resolved = await new Promise((resolve, reject) => {
             const socket = new WebSocket(BACKEND_WS_URL);
@@ -794,14 +814,20 @@ function makePortMap(component) {
               cb(val);
             };
             socket.addEventListener("open", () => {
-              socket.send(JSON.stringify({ type: "resolve_refs", refs: refsToResolve }));
+              socket.send(
+                JSON.stringify({ type: "resolve_refs", refs: refsToResolve }),
+              );
             });
             socket.addEventListener("message", (event) => {
               const msg = JSON.parse(event.data);
               if (msg.type === "refs_resolved") finish(resolve, msg.values);
             });
-            socket.addEventListener("error", () => finish(reject, new Error("Failed to resolve refs")));
-            socket.addEventListener("close", () => { if (!settled) finish(resolve, {}); });
+            socket.addEventListener("error", () =>
+              finish(reject, new Error("Failed to resolve refs")),
+            );
+            socket.addEventListener("close", () => {
+              if (!settled) finish(resolve, {});
+            });
           });
 
           for (const ns of Object.values(resultMsg.state.node_states)) {
@@ -815,7 +841,10 @@ function makePortMap(component) {
           console.log("── Resolved values:");
           for (const [nid, ns] of Object.entries(resultMsg.state.node_states)) {
             for (const [key, val] of Object.entries(ns.outputs || {})) {
-              const preview = typeof val === "string" ? val.slice(0, 200) : JSON.stringify(val).slice(0, 200);
+              const preview =
+                typeof val === "string"
+                  ? val.slice(0, 200)
+                  : JSON.stringify(val).slice(0, 200);
               console.log(`  ${nid}.${key} = ${preview}`);
             }
           }
@@ -825,9 +854,9 @@ function makePortMap(component) {
       }
 
       console.log("══════════════════════════════════════════════════");
-      const counts = Object.values(resultMsg.state.node_states).map(
-        (ns) => `${ns.node_id?.slice(0, 8) || "?"}:${ns.status}`
-      ).join(", ");
+      const counts = Object.values(resultMsg.state.node_states)
+        .map((ns) => `${ns.node_id?.slice(0, 8) || "?"}:${ns.status}`)
+        .join(", ");
       setStatus(`Run completed — ${counts}`);
     } else {
       setStatus(resultMsg?.state?.error || "Run failed");
@@ -841,7 +870,7 @@ function makePortMap(component) {
             nodeStatus: resultMsg.state.node_states[node.id]?.status || null,
             nodeOutputs: resultMsg.state.node_states[node.id]?.outputs || null,
           },
-        }))
+        })),
       );
     }
     setIsRunning(false);
