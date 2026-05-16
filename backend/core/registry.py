@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import logging
 import os
 import sys
+from collections.abc import Callable
 from typing import Any
 
 from backend.core.models import (
@@ -58,8 +60,12 @@ class RegisteredNode:
             args_schema=dict(self.args_schema),
         )
 
-    async def run(self, args: dict, inputs: dict, context: Any) -> dict:
-        return await self.cls.run(args, inputs, context)
+    async def run(self, args: dict, inputs: dict, context: Any, emit: Callable[[str, str], None] | None = None) -> dict:
+        sig = inspect.signature(self.cls.run)
+        kwargs = {"args": args, "inputs": inputs, "context": context}
+        if "emit" in sig.parameters:
+            kwargs["emit"] = emit or (lambda port, data: None)
+        return await self.cls.run(**kwargs)
 
 
 _registry: dict[str, RegisteredNode] = {}

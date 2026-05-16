@@ -44,6 +44,7 @@ const BACKEND_TYPE_TO_FIELD = {
   number: "number",
   integer: "number",
   boolean: "toggle",
+  file: "file",
 };
 
 function backendTypeToComponent(bt) {
@@ -135,6 +136,7 @@ function summarizeMessage(message) {
   if (message.type === "run_finished")
     return `Run ${message.state?.status || "finished"}`;
   if (message.type === "error") return `Backend error: ${message.message}`;
+  if (message.type === "stream_chunk") return `Streaming: ${message.node_id} → ${message.port}`;
   return `Message: ${message.type}`;
 }
 
@@ -291,7 +293,7 @@ const SavedComponentNode = memo(({ id, data }) => {
   const [showPreview, setShowPreview] = useState(false);
 
   const hasOutputs =
-    status === "completed" &&
+    (status === "completed" || status === "streaming") &&
     nodeOutputs &&
     Object.keys(nodeOutputs).length > 0;
 
@@ -338,6 +340,16 @@ const SavedComponentNode = memo(({ id, data }) => {
           ))}
         </div>
       </div>
+      {status === "streaming" && nodeOutputs && (
+        <div className="streaming-preview">
+          {Object.entries(nodeOutputs).map(([key, val]) => (
+            <div key={key}>
+              <code>{key}</code>
+              <pre>{val}</pre>
+            </div>
+          ))}
+        </div>
+      )}
       {hasOutputs && (
         <>
           <button
@@ -360,7 +372,7 @@ const SavedComponentNode = memo(({ id, data }) => {
                 onClick={(e) => e.stopPropagation()}
               >
                 <header className="output-modal-header">
-                  <strong>{component.name} — Outputs</strong>
+                  <strong>{component.name} — Outputs{status === "streaming" ? " (streaming…)" : ""}</strong>
                   <button
                     className="output-modal-close nodrag nopan"
                     onClick={() => setShowPreview(false)}
@@ -676,7 +688,19 @@ export default function Flow() {
             if (lower === "use cache" || f.id === "field-cache") {
               cache = Boolean(f.value);
             } else {
-              args[toContractName(f.label, "arg")] = f.value;
+              let value = f.value;
+              const schema = comp._backendDef?.args_schema;
+              if (schema) {
+                const key = Object.keys(schema).find(
+                  (k) => f.id === `field-${k}`,
+                );
+                if (key) {
+                  const t = schema[key].type;
+                  if (t === "integer" || t === "number") value = Number(value);
+                  if (t === "boolean") value = Boolean(value);
+                }
+              }
+              args[toContractName(f.label, "arg")] = value;
             }
           });
         }
@@ -738,6 +762,16 @@ export default function Flow() {
                   ? { ...node, data: { ...node.data, nodeStatus: msg.status } }
                   : node,
               ),
+            );
+          }
+          if (msg.type === "stream_chunk") {
+            setNodes((current) =>
+              current.map((node) => {
+                if (node.id !== msg.node_id) return node;
+                const outputs = { ...(node.data.nodeOutputs || {}) };
+                outputs[msg.port] = (outputs[msg.port] || "") + msg.data;
+                return { ...node, data: { ...node.data, nodeOutputs: outputs, nodeStatus: "streaming" } };
+              }),
             );
           }
           if (msg.type === "run_rejected" || msg.type === "error") {

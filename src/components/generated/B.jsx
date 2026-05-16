@@ -35,11 +35,11 @@ function FieldValue({ field }) {
   return <span className="component-value">{String(field.value ?? "")}</span>;
 }
 
-function Username({ data = {} }) {
+function B({ data = {} }) {
   const nodeFields = data.fields || fields;
   const nodeInputs = data.inputs || inputs;
   const nodeOutputs = data.outputs || outputs;
-  const label = data.label || `Username`;
+  const label = data.label || `B`;
   const description = data.description || `Collects prompt settings and sends the configured prompt to the next node.`;
 
   return (
@@ -80,4 +80,4 @@ function Username({ data = {} }) {
   );
 }
 
-export default memo(Username);
+export default memo(B);

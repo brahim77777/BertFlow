@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import defaultdict, deque
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from backend.core.errors import NodeExecutionError
 from backend.core.logging import logger
@@ -23,7 +23,12 @@ class AsyncGraphExecutor:
         self._store = store or InMemoryResultStore()
         self._cache = cache or InMemoryExecutionCache()
 
-    async def execute(self, request: RunRequest, on_node_status: Callable[[str, str, str | None], Awaitable[None]] | None = None) -> ExecutionState:
+    async def execute(
+        self,
+        request: RunRequest,
+        on_node_status: Callable[[str, str, str | None], Awaitable[None]] | None = None,
+        on_node_output: Callable[[str, str, str], Awaitable[None]] | None = None,
+    ) -> ExecutionState:
         state = ExecutionState(run_id=request.run_id, status="running")
         node_states: dict[str, NodeState] = {}
         for nid, node in request.nodes.items():
@@ -68,7 +73,12 @@ class AsyncGraphExecutor:
 
                     tasks = []
                     for nid in wave:
-                        tasks.append(self._run_node(request, nid, node_states, node_inputs, output_map, max_retries, on_node_status))
+                        tasks.append(
+                            self._run_node(
+                                request, nid, node_states, node_inputs,
+                                output_map, max_retries, on_node_status, on_node_output,
+                            )
+                        )
 
                     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -95,18 +105,17 @@ class AsyncGraphExecutor:
 
                         pending -= 1
 
-                    new_ready: list[str] = []
-                    for edge in request.edges:
-                        src = edge.source
-                        tgt = edge.target
-                        if node_states[src].status == "completed" and node_states[tgt].status == "pending":
-                            inp = node_states[src].outputs.get(edge.source_port, "")
-                            node_inputs[tgt][edge.target_port] = inp
+                    for src in wave:
+                        if node_states[src].status != "completed":
+                            continue
+                        for tgt, src_port, tgt_port in adj.get(src, []):
+                            if node_states[tgt].status != "pending":
+                                continue
+                            inp = output_map[src].get(src_port, "")
+                            node_inputs[tgt][tgt_port] = inp
                             in_deg[tgt] -= 1
                             if in_deg[tgt] == 0:
-                                new_ready.append(tgt)
-
-                    ready.extend(nid for nid in new_ready if nid not in ready)
+                                ready.append(tgt)
 
             if state.status == "running":
                 state.status = "completed"
@@ -129,6 +138,7 @@ class AsyncGraphExecutor:
         output_map: dict[str, dict[str, str]],
         max_retries: int,
         on_node_status: Callable[[str, str, str | None], Awaitable[None]] | None = None,
+        on_node_output: Callable[[str, str, str], Awaitable[None]] | None = None,
     ) -> dict | None:
         node = request.nodes[nid]
         reg = self._registry.get(node.node_type)
@@ -142,6 +152,12 @@ class AsyncGraphExecutor:
 
         args = dict(node.args)
         inputs = dict(node_inputs.get(nid, {}))
+        stream_buf: dict[str, list[str]] = defaultdict(list)
+
+        async def emit(port: str, data: str) -> None:
+            stream_buf[port].append(data)
+            if on_node_output:
+                await on_node_output(nid, port, data)
 
         if node.config.cache:
             cached = self._cache.get(node.node_type, args, inputs)
@@ -157,10 +173,12 @@ class AsyncGraphExecutor:
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
-                outputs = await reg.run(args, inputs, nid)
+                outputs = await reg.run(args, inputs, nid, emit)
                 node_states[nid].finished_at = time.time()
                 if node.config.cache:
                     self._cache.put(node.node_type, args, inputs, outputs)
+                for port, chunks in stream_buf.items():
+                    outputs.setdefault(port, "".join(chunks))
                 logger.info("Node %s (%s) completed", nid, node.node_type)
                 return outputs
             except Exception as exc:

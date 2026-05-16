@@ -3,44 +3,54 @@ import { Handle, Position } from "@xyflow/react";
 
 const fields = [
   {
-    "id": "field-eb2a42b3-6c0c-4323-a3f3-141c73dd7cb1",
-    "label": "text",
-    "type": "textarea",
-    "value": "hi",
-    "description": ""
-  }
+    id: "file",
+    label: "File",
+    type: "file",
+    value: "",
+    description: "Select a document to upload and process",
+  },
 ];
-const inputs = [
-  {
-    "id": "port-8f82107c-7433-470b-84b2-2d434b60e031",
-    "label": "Input 1",
-    "type": "any",
-    "description": "Input 1 connection point."
-  }
-];
+
+const inputs = [];
+
 const outputs = [
   {
-    "id": "port-42cce41d-1672-40a7-ba75-eb495f8495ec",
-    "label": "text",
-    "type": "text",
-    "description": "Output 1 connection point."
-  }
+    id: "text",
+    label: "Text",
+    type: "string",
+    description: "Extracted text content from the document",
+  },
+  {
+    id: "filename",
+    label: "Filename",
+    type: "string",
+    description: "Name of the uploaded file",
+  },
+  {
+    id: "metadata",
+    label: "Metadata",
+    type: "json",
+    description: "File metadata including size and any errors",
+  },
 ];
 
 function FieldValue({ field }) {
-  if (field.type === "toggle" || field.type === "checkbox") {
-    return <span className={`component-switch ${field.value ? "is-on" : ""}`} />;
+  if (field.type === "file") {
+    return (
+      <span className="component-value file-value">
+        {field.value ? field.value.split("/").pop() || field.value : "No file"}
+      </span>
+    );
   }
-
   return <span className="component-value">{String(field.value ?? "")}</span>;
 }
 
-function Username({ data = {} }) {
+function UploadDocument({ data = {} }) {
   const nodeFields = data.fields || fields;
   const nodeInputs = data.inputs || inputs;
   const nodeOutputs = data.outputs || outputs;
-  const label = data.label || `Username`;
-  const description = data.description || `Collects prompt settings and sends the configured prompt to the next node.`;
+  const label = data.label || "Upload Document";
+  const description = data.description || "Upload a file and extract its text content";
 
   return (
     <article className="generated-component-node" title={description}>
@@ -80,4 +90,4 @@ function Username({ data = {} }) {
   );
 }
 
-export default memo(Username);
+export default memo(UploadDocument);

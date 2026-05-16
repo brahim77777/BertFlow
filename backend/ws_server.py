@@ -13,6 +13,9 @@ from backend.core.registry import NodeRegistry
 from backend.core.result_store import InMemoryExecutionCache, InMemoryResultStore
 from backend.core.validator import validate_run_request
 
+_shared_store = InMemoryResultStore()
+_shared_cache = InMemoryExecutionCache()
+
 
 def build_registry() -> NodeRegistry:
     return NodeRegistry.discover()
@@ -89,7 +92,16 @@ async def handle_message(
                     "error": error,
                 }))
 
-            state = await executor.execute(request, on_node_status=on_node_status)
+            async def on_node_output(nid: str, port: str, data: str) -> None:
+                await send_fn(json.dumps({
+                    "type": "stream_chunk",
+                    "run_id": run_id,
+                    "node_id": nid,
+                    "port": port,
+                    "data": data,
+                }))
+
+            state = await executor.execute(request, on_node_status=on_node_status, on_node_output=on_node_output)
             result = {
                 "type": "run_finished",
                 "run_id": run_id,
@@ -132,9 +144,7 @@ async def handle_message(
 
 async def ws_handler(websocket: Any) -> None:
     registry = build_registry()
-    store = InMemoryResultStore()
-    cache = InMemoryExecutionCache()
-    executor = AsyncGraphExecutor(registry, store, cache)
+    executor = AsyncGraphExecutor(registry, _shared_store, _shared_cache)
 
     logger.info(
         "New connection — %d node types available",
@@ -154,7 +164,7 @@ async def ws_handler(websocket: Any) -> None:
 
     async for raw in websocket:
         try:
-            await handle_message(raw, registry, executor, send, store)
+            await handle_message(raw, registry, executor, send, _shared_store)
         except Exception as exc:
             logger.error("Unhandled error: %s\n%s", exc, traceback.format_exc())
             await send(_make_error(f"Internal server error: {exc}", "internal_error"))

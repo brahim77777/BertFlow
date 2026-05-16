@@ -14,7 +14,7 @@ const inputs = [
   {
     "id": "port-8f82107c-7433-470b-84b2-2d434b60e031",
     "label": "Input 1",
-    "type": "any",
+    "type": "string",
     "description": "Input 1 connection point."
   }
 ];
@@ -35,11 +35,11 @@ function FieldValue({ field }) {
   return <span className="component-value">{String(field.value ?? "")}</span>;
 }
 
-function Username({ data = {} }) {
+function Group({ data = {} }) {
   const nodeFields = data.fields || fields;
   const nodeInputs = data.inputs || inputs;
   const nodeOutputs = data.outputs || outputs;
-  const label = data.label || `Username`;
+  const label = data.label || `Group`;
   const description = data.description || `Collects prompt settings and sends the configured prompt to the next node.`;
 
   return (
@@ -80,4 +80,4 @@ function Username({ data = {} }) {
   );
 }
 
-export default memo(Username);
+export default memo(Group);
