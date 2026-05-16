@@ -136,6 +136,16 @@ class MyStreamer:
 
 Then click "Fetch from Backend" in the Flow view to see it appear.
 
+
+## COMPLETED FIXES
+
+- [x] **Shared cache & result store across connections** — `ws_server.py`: moved `InMemoryResultStore` and `InMemoryExecutionCache` to module-level `_shared_store` / `_shared_cache` so all WebSocket connections share the same cache and result store. Previously each connection got its own empty cache, meaning no cross-client cache hits.
+- [x] **O(E) → O(degree) edge scanning in executor** — `executor.py:98-107`: replaced the post-wave loop that iterated over all edges with a direct adjacency list lookup (`adj[src]`). For a graph with N nodes and E edges across W waves, this reduces edge scanning from O(W × E) to O(E) total.
+- [x] **Streaming node support** — Added `emit(port, data)` callback pattern. Nodes with `emit` parameter in `run()` signature stream chunks to frontend via `stream_chunk` WS message. Executor accumulates chunks into final output. Frontend shows "streaming…" status with live preview. Example: `openrouter.py` streams OpenRouter SSE responses.
+- [x] **Frontend type coercion for args** — `flow.jsx:675-693`: field values are now coerced to their backend-declared types (`integer`/`number` → `Number()`, `boolean` → `Boolean()`) before sending in the run payload. Prevents 400 errors from APIs that reject string-typed numbers.
+- [x] **Inline streaming preview in nodes** — `flow.jsx:343-352` + `styles.css`: live preview area appears directly in the node body during streaming (no click needed). Shows full text with scroll, purple pulsing border on the node. Removed `previewLines()` truncation from the inline preview.
+- [x] **OpenRouter node: sync → async HTTP** — `openrouter.py`: replaced `requests` + `asyncio.to_thread` with `httpx.AsyncClient.stream()`. The `emit` callback was silently failing because it was called from a blocking thread where coroutines were never awaited. Now everything runs in the event loop and `await emit()` actually sends WS messages. Added `httpx` dependency.
+
 ## ORPHANS & PENDING
 
 - [ ] force types in the frontend ( string != List[str] ) and the types should be a dropdown list precollected from the backend at first start
@@ -146,9 +156,3 @@ Then click "Fetch from Backend" in the Flow view to see it appear.
 - [ ] adding a document upload component, and using "ref" to get it's value.
 - [ ] implement the reference instead of actual value in fileUpload + change saved files folder + adding multiple compatible formats
 - [ ] add a Ctrl+Z functionality
-
-## COMPLETED FIXES
-
-- [x] **Shared cache & result store across connections** — `ws_server.py`: moved `InMemoryResultStore` and `InMemoryExecutionCache` to module-level `_shared_store` / `_shared_cache` so all WebSocket connections share the same cache and result store. Previously each connection got its own empty cache, meaning no cross-client cache hits.
-- [x] **O(E) → O(degree) edge scanning in executor** — `executor.py:98-107`: replaced the post-wave loop that iterated over all edges with a direct adjacency list lookup (`adj[src]`). For a graph with N nodes and E edges across W waves, this reduces edge scanning from O(W × E) to O(E) total.
-- [x] **Streaming node support** — Added `emit(port, data)` callback pattern. Nodes with `emit` parameter in `run()` signature stream chunks to frontend via `stream_chunk` WS message. Executor accumulates chunks into final output. Frontend shows "streaming…" status with live preview. Example: `openrouter.py` streams OpenRouter SSE responses.
