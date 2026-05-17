@@ -10,6 +10,8 @@ node_modules/
 dist/
 build/
 
+backend/app
+lancedb_store
 # Logs
 npm-debug.log*
 yarn-debug.log*

@@ -93,13 +93,14 @@ async def handle_message(
         }))
 
         try:
-            async def on_node_status(nid: str, status: str, error: str | None = None) -> None:
+            async def on_node_status(nid: str, status: str, error: str | None = None, duration: float | None = None) -> None:
                 await send_fn(json.dumps({
                     "type": "node_status",
                     "run_id": run_id,
                     "node_id": nid,
                     "status": status,
                     "error": error,
+                    "duration": duration,
                 }))
 
             async def on_node_output(nid: str, port: str, data: str) -> None:
@@ -123,6 +124,7 @@ async def handle_message(
                             "outputs": _sanitize_for_json(ns.outputs),
                             "cached": ns.cached,
                             "error": ns.error,
+                            "duration": round(ns.finished_at - ns.started_at, 3) if ns.finished_at and ns.started_at else None,
                         }
                         for nid, ns in state.node_states.items()
                     },

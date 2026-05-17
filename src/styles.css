@@ -961,6 +961,79 @@ button {
         0 0 24px rgba(124, 58, 237, 0.2);
 }
 
+/* ── Node Runtime Badge ───────────────────────────────────── */
+.node-runtime-badge {
+    position: absolute;
+    top: -10px;
+    left: 12px;
+    z-index: 10;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 20px;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    background: #111114;
+    border: 1px solid var(--border-md);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    color: var(--text-secondary);
+}
+
+.node-runtime-badge::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+}
+
+.status-completed .node-runtime-badge {
+    border-color: rgba(34, 197, 94, 0.3);
+    color: var(--status-completed);
+}
+.status-completed .node-runtime-badge::before {
+    background: var(--status-completed);
+    box-shadow: 0 0 6px var(--status-completed);
+}
+
+.status-running .node-runtime-badge {
+    border-color: rgba(245, 158, 11, 0.3);
+    color: var(--status-running);
+}
+.status-running .node-runtime-badge::before {
+    background: var(--status-running);
+    box-shadow: 0 0 6px var(--status-running);
+    animation: runtime-pulse 1s infinite alternate;
+}
+
+.status-streaming .node-runtime-badge {
+    border-color: rgba(124, 58, 237, 0.3);
+    color: #a78bfa;
+}
+.status-streaming .node-runtime-badge::before {
+    background: #a78bfa;
+    box-shadow: 0 0 6px #a78bfa;
+    animation: runtime-pulse 1s infinite alternate;
+}
+
+.status-failed .node-runtime-badge {
+    border-color: rgba(239, 68, 68, 0.3);
+    color: var(--status-failed);
+}
+.status-failed .node-runtime-badge::before {
+    background: var(--status-failed);
+}
+
+@keyframes runtime-pulse {
+    from { opacity: 0.4; }
+    to { opacity: 1; }
+}
+
 .generated-component-header {
     display: flex;
     align-items: flex-start;

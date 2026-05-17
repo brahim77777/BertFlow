@@ -294,6 +294,8 @@ const SavedComponentNode = memo(({ id, data }) => {
   const icon = component._backendDef?.ui_config?.icon;
   const [showPreview, setShowPreview] = useState(false);
 
+  const duration = data.nodeDuration;
+
   const hasOutputs =
     (status === "completed" || status === "streaming") &&
     nodeOutputs &&
@@ -304,6 +306,17 @@ const SavedComponentNode = memo(({ id, data }) => {
       className={`generated-component-node${status ? ` status-${status}` : ""}`}
       title={component.description}
     >
+      {status && status !== "pending" && (
+        <div className="node-runtime-badge">
+          {status === "running"
+            ? "Running..."
+            : status === "streaming"
+              ? "Streaming..."
+              : duration !== null && duration !== undefined
+                ? `${duration}s`
+                : "Completed"}
+        </div>
+      )}
       <header className="generated-component-header">
         {icon && (
           <img
@@ -776,7 +789,7 @@ export default function Flow() {
             setNodes((current) =>
               current.map((node) => ({
                 ...node,
-                data: { ...node.data, nodeStatus: "pending" },
+                data: { ...node.data, nodeStatus: "pending", nodeDuration: null },
               })),
             );
           }
@@ -784,7 +797,14 @@ export default function Flow() {
             setNodes((current) =>
               current.map((node) =>
                 node.id === msg.node_id
-                  ? { ...node, data: { ...node.data, nodeStatus: msg.status } }
+                  ? {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        nodeStatus: msg.status,
+                        nodeDuration: msg.duration !== undefined ? msg.duration : node.data.nodeDuration,
+                      },
+                    }
                   : node,
               ),
             );
@@ -803,7 +823,7 @@ export default function Flow() {
             setNodes((current) =>
               current.map((node) => ({
                 ...node,
-                data: { ...node.data, nodeStatus: null },
+                data: { ...node.data, nodeStatus: null, nodeDuration: null },
               })),
             );
             finish(reject, new Error(summarizeMessage(msg)));
@@ -928,6 +948,7 @@ export default function Flow() {
             ...node.data,
             nodeStatus: resultMsg.state.node_states[node.id]?.status || null,
             nodeOutputs: resultMsg.state.node_states[node.id]?.outputs || null,
+            nodeDuration: resultMsg.state.node_states[node.id]?.duration || null,
           },
         })),
       );
