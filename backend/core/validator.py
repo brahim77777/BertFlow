@@ -62,6 +62,8 @@ def validate_run_request(request: RunRequest, registry: NodeRegistry) -> GraphPl
 
     target_inputs: dict[tuple[str, str], str] = {}
     for edge in edges:
+        if edge.mode == "extension":
+            continue
         key = (edge.target, edge.target_port)
         if key in target_inputs:
             raise GraphValidationError(

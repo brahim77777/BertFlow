@@ -52,6 +52,7 @@ function backendTypeToComponent(bt) {
     id: `in-${name}`,
     label: name,
     type: def.type || "any",
+    mode: def.mode || "data",
     description: def.required ? `${def.type} (required)` : `${def.type}`,
   }));
   const outputs = Object.entries(bt.ports?.outputs || {}).map(
@@ -59,6 +60,7 @@ function backendTypeToComponent(bt) {
       id: `out-${name}`,
       label: name,
       type: def.type || "any",
+      mode: def.mode || "data",
       description: `Output: ${def.type}`,
     }),
   );
@@ -255,7 +257,7 @@ const FlowFieldRow = memo(({ field, nodeId, onFieldChange }) => {
 });
 
 const InputPortRow = memo(({ port }) => (
-  <div className="generated-port-row" title={port.description}>
+  <div className={`generated-port-row${port.mode === "extension" ? " is-extension" : ""}`} title={port.description}>
     <Handle type="target" id={port.id} position={Position.Left} />
     <span>{port.label}</span>
     <code>{port.type || "any"}</code>
@@ -263,7 +265,7 @@ const InputPortRow = memo(({ port }) => (
 ));
 
 const OutputPortRow = memo(({ port }) => (
-  <div className="generated-port-row is-output" title={port.description}>
+  <div className={`generated-port-row is-output${port.mode === "extension" ? " is-extension" : ""}`} title={port.description}>
     <code>{port.type || "any"}</code>
     <span>{port.label}</span>
     <Handle type="source" id={port.id} position={Position.Right} />
@@ -635,22 +637,43 @@ export default function Flow() {
     const tgtPort = tgt?.data.component.inputs?.find(
       (p) => p.id === params.targetHandle,
     );
+
+    let mode = tgtPort?.mode === "extension" || srcPort?.mode === "extension" ? "extension" : "data";
+
+    if (mode === "data" && tgt?.data._backendDef) {
+      const backendInputs = tgt.data._backendDef.ports?.inputs || {};
+      for (const [name, def] of Object.entries(backendInputs)) {
+        const handleId = `in-${name}`;
+        if (params.targetHandle === handleId && def.mode === "extension") {
+          mode = "extension";
+          break;
+        }
+      }
+    }
+
     if (
-      srcPort &&
-      tgtPort &&
+      srcPort && tgtPort &&
+      srcPort.mode !== "extension" && tgtPort.mode !== "extension" &&
       !arePortTypesCompatible(srcPort.type, tgtPort.type)
     ) {
       setStatus(`Type mismatch: ${srcPort.type} → ${tgtPort.type}`);
       return;
     }
     setEdges((current) => {
-      const filtered = current.filter(
-        (e) =>
-          !(
-            e.target === params.target && e.targetHandle === params.targetHandle
-          ),
-      );
-      return addEdge(params, filtered);
+      let base = current;
+      if (mode !== "extension") {
+        base = current.filter(
+          (e) =>
+            !(
+              e.target === params.target && e.targetHandle === params.targetHandle
+            ),
+        );
+      }
+      return addEdge({
+        ...params,
+        mode,
+        className: mode === "extension" ? "extension-edge" : "",
+      }, base);
     });
   }, []);
 
@@ -720,6 +743,7 @@ export default function Flow() {
           from_port: srcMap[edge.sourceHandle] || edge.sourceHandle,
           to: edge.target,
           to_port: tgtMap[edge.targetHandle] || edge.targetHandle,
+          mode: edge.mode || "data",
         };
       }),
     };

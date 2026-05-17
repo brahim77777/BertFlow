@@ -36,6 +36,7 @@ class RegisteredNode:
             k: PortDefinition(
                 name=k, type=v.get("type", "any"),
                 required=v.get("required", False), default=v.get("default"),
+                mode=v.get("mode", "data"),
             )
             for k, v in raw.items()
         }

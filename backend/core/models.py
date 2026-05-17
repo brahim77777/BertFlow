@@ -54,6 +54,7 @@ class Edge:
     target_port: str
     source_type: str = ""
     target_type: str = ""
+    mode: str = "data"
 
     @classmethod
     def from_dict(cls, d: dict) -> Edge:
@@ -65,6 +66,7 @@ class Edge:
             target_port=d["to_port"],
             source_type=normalize_type(d.get("from_type", "any")),
             target_type=normalize_type(d.get("to_type", "any")),
+            mode=d.get("mode", "data"),
         )
 
 
@@ -123,6 +125,7 @@ class PortDefinition:
     type: str
     required: bool = False
     default: Any = None
+    mode: str = "data"
 
 
 @dataclass
@@ -154,11 +157,11 @@ class NodeTypeSchema:
             "ui_config": dict(self.ui_config),
             "ports": {
                 "inputs": {
-                    k: {"type": v.type, "required": v.required, "default": v.default}
+                    k: {"type": v.type, "required": v.required, "default": v.default, "mode": v.mode}
                     for k, v in self.inputs.items()
                 },
                 "outputs": {
-                    k: {"type": v.type} for k, v in self.outputs.items()
+                    k: {"type": v.type, "mode": v.mode} for k, v in self.outputs.items()
                 },
             },
             "args_schema": {

@@ -4,6 +4,7 @@ import asyncio
 import time
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from backend.core.errors import NodeExecutionError
 from backend.core.logging import logger
@@ -51,81 +52,75 @@ class AsyncGraphExecutor:
         fail_mode = request.execution_config.on_node_failure
         max_retries = request.execution_config.max_retries
 
-        async def _do_execute():
-            nonlocal pending
-            while ready or pending > 0:
-                wave = list(ready)
-                ready.clear()
-
-                if not wave:
-                    if pending > 0:
-                        remaining = [n for n in request.nodes if node_states[n].status == "pending"]
-                        if remaining:
-                            for nid in remaining:
-                                node_states[nid].status = "failed"
-                                node_states[nid].error = "Dependency not satisfied (possible cycle or disconnected)"
-                                if on_node_status:
-                                    await on_node_status(nid, "failed", node_states[nid].error)
-                            state.status = "failed"
-                            state.error = "Execution stuck: some nodes never became ready"
-                        break
-                    break
-
-                tasks = []
-                for nid in wave:
-                    tasks.append(
-                        self._run_node(
-                            request, nid, node_states, node_inputs,
-                            output_map, max_retries, on_node_status, on_node_output,
-                        )
-                    )
-
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                for nid, result in zip(wave, results, strict=True):
-                    if isinstance(result, Exception):
-                        node_states[nid].status = "failed"
-                        node_states[nid].error = str(result)
-                        if on_node_status:
-                            await on_node_status(nid, "failed", node_states[nid].error)
-                        if fail_mode == "halt":
-                            state.status = "failed"
-                            state.error = f"Node '{nid}' failed: {result}"
-                            return
-                        elif fail_mode == "skip":
-                            pass
-                    else:
-                        node_states[nid].status = "completed"
-                        if on_node_status:
-                            await on_node_status(nid, "completed")
-                        if result is not None:
-                            node_states[nid].outputs = self._store.build_outputs(request.run_id, nid, result)
-                            for port_name, val in node_states[nid].outputs.items():
-                                output_map[nid][port_name] = val
-
-                    pending -= 1
-
-                for src in wave:
-                    if node_states[src].status != "completed":
-                        continue
-                    for tgt, src_port, tgt_port in adj.get(src, []):
-                        if node_states[tgt].status != "pending":
-                            continue
-                        inp = output_map[src].get(src_port, "")
-                        # Resolve store:// refs so downstream nodes receive the
-                        # actual value, not an opaque reference string.
-                        if isinstance(inp, str) and inp.startswith("store://"):
-                            inp = self._store.resolve(inp)
-                        node_inputs[tgt][tgt_port] = inp
-                        in_deg[tgt] -= 1
-                        if in_deg[tgt] == 0:
-                            ready.append(tgt)
-
         try:
-            await asyncio.wait_for(_do_execute(), timeout=timeout)
+            async with asyncio.timeout(timeout):
+                while ready or pending > 0:
+                    wave = list(ready)
+                    ready.clear()
+
+                    if not wave:
+                        if pending > 0:
+                            remaining = [n for n in request.nodes if node_states[n].status == "pending"]
+                            if remaining:
+                                for nid in remaining:
+                                    node_states[nid].status = "failed"
+                                    node_states[nid].error = "Dependency not satisfied (possible cycle or disconnected)"
+                                    if on_node_status:
+                                        await on_node_status(nid, "failed", node_states[nid].error)
+                                state.status = "failed"
+                                state.error = "Execution stuck: some nodes never became ready"
+                            break
+                        break
+
+                    tasks = []
+                    for nid in wave:
+                        tasks.append(
+                            self._run_node(
+                                request, nid, node_states, node_inputs,
+                                output_map, max_retries, on_node_status, on_node_output,
+                            )
+                        )
+
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    for nid, result in zip(wave, results, strict=True):
+                        if isinstance(result, Exception):
+                            node_states[nid].status = "failed"
+                            node_states[nid].error = str(result)
+                            if on_node_status:
+                                await on_node_status(nid, "failed", node_states[nid].error)
+                            if fail_mode == "halt":
+                                state.status = "failed"
+                                state.error = f"Node '{nid}' failed: {result}"
+                                return state
+                            elif fail_mode == "skip":
+                                pass
+                        else:
+                            node_states[nid].status = "completed"
+                            if on_node_status:
+                                await on_node_status(nid, "completed")
+                            if result is not None:
+                                node_states[nid].outputs = self._store.build_outputs(request.run_id, nid, result)
+                                for port_name, val in node_states[nid].outputs.items():
+                                    output_map[nid][port_name] = val
+
+                        pending -= 1
+
+                    for src in wave:
+                        if node_states[src].status != "completed":
+                            continue
+                        for tgt, src_port, tgt_port in adj.get(src, []):
+                            if node_states[tgt].status != "pending":
+                                continue
+                            inp = output_map[src].get(src_port, "")
+                            node_inputs[tgt].setdefault(tgt_port, []).append(inp)
+                            in_deg[tgt] -= 1
+                            if in_deg[tgt] == 0:
+                                ready.append(tgt)
+
             if state.status == "running":
                 state.status = "completed"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             state.status = "failed"
             state.error = f"Execution timed out after {timeout}s"
         except Exception as exc:
@@ -157,7 +152,22 @@ class AsyncGraphExecutor:
             await on_node_status(nid, "running")
 
         args = dict(node.args)
-        inputs = dict(node_inputs.get(nid, {}))
+        raw_inputs = node_inputs.get(nid, {})
+        inputs = {}
+        for k, v in raw_inputs.items():
+            inputs[k] = v[0] if isinstance(v, list) and len(v) == 1 else v
+
+        ext_ports = [p for p in reg.inputs.values() if p.mode == "extension"]
+        ctx: dict[str, Any] = {}
+        if ext_ports:
+            extensions: dict[str, Any] = {}
+            for port_def in ext_ports:
+                val = raw_inputs.get(port_def.name)
+                if val is not None:
+                    extensions[port_def.name] = val if isinstance(val, list) else [val]
+            if extensions:
+                ctx["extensions"] = extensions
+
         stream_buf: dict[str, list[str]] = defaultdict(list)
 
         async def emit(port: str, data: str) -> None:
@@ -179,7 +189,7 @@ class AsyncGraphExecutor:
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
-                outputs = await reg.run(args, inputs, nid, emit)
+                outputs = await reg.run(args, inputs, ctx, emit)
                 node_states[nid].finished_at = time.time()
                 if node.config.cache:
                     self._cache.put(node.node_type, args, inputs, outputs)

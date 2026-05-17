@@ -25,6 +25,16 @@ def _make_error(msg: str, code: str = "error") -> str:
     return json.dumps({"type": code, "message": msg})
 
 
+def _sanitize_for_json(value: Any) -> Any:
+    if callable(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _sanitize_for_json(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_for_json(item) for item in value]
+    return value
+
+
 async def handle_message(
     text: str,
     registry: NodeRegistry,
@@ -110,7 +120,7 @@ async def handle_message(
                     "node_states": {
                         nid: {
                             "status": ns.status,
-                            "outputs": ns.outputs,
+                            "outputs": _sanitize_for_json(ns.outputs),
                             "cached": ns.cached,
                             "error": ns.error,
                         }

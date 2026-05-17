@@ -329,6 +329,23 @@ button {
     stroke-width: 2;
 }
 
+.react-flow__edge[data-edge-mode="extension"] .react-flow__edge-path {
+    stroke: #F59E0B !important;
+    stroke-width: 2;
+    stroke-dasharray: 6 4;
+}
+
+.react-flow__edge[data-edge-mode="extension"] .react-flow__edge-text {
+    fill: #F59E0B !important;
+    font-size: 10px;
+}
+
+.react-flow__edge.extension-edge .react-flow__edge-path {
+    stroke: #F59E0B !important;
+    stroke-width: 2;
+    stroke-dasharray: 6 4;
+}
+
 .react-flow__background {
     background-color: var(--bg-canvas) !important;
 }
@@ -1012,6 +1029,19 @@ button {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.generated-port-row.is-extension {
+    border-style: dashed;
+    border-color: #F59E0B;
+    background: rgba(245, 158, 11, 0.06);
+}
+
+.generated-port-row.is-extension .react-flow__handle {
+    background: #F59E0B;
+    box-shadow:
+        0 0 0 1px #F59E0B,
+        0 0 8px rgba(245, 158, 11, 0.4);
 }
 
 .generated-port-row.is-output {
