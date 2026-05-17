@@ -240,18 +240,81 @@ const FlowFieldInput = memo(({ field, onChange }) => {
   );
 });
 
-const FlowFieldRow = memo(({ field, nodeId, onFieldChange }) => {
+const ExpandableFieldInput = memo(({ field, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(field.value ?? "");
+
+  const openModal = (e) => {
+    stopFlowInteraction(e);
+    setDraft(field.value ?? "");
+    setOpen(true);
+  };
+
+  const save = () => {
+    onChange(draft);
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="expandable-field-trigger nodrag nopan"
+        onPointerDown={stopFlowInteraction}
+        onMouseDown={stopFlowInteraction}
+        onClick={openModal}
+        title="Click to expand editor"
+      >
+        {(field.value || "").slice(0, 60) || "Click to edit template…"}
+        <span className="expand-icon">⤢</span>
+      </button>
+      {open && (
+        <div className="template-modal-backdrop" onClick={() => setOpen(false)}>
+          <div className="template-modal-panel" onClick={(e) => e.stopPropagation()}>
+            <header className="template-modal-header">
+              <strong>{field.label}</strong>
+              <div className="template-modal-actions">
+                <button className="template-modal-save nodrag nopan" onClick={save}>Save</button>
+                <button className="template-modal-close nodrag nopan" onClick={() => setOpen(false)}>✕</button>
+              </div>
+            </header>
+            <textarea
+              className="template-modal-textarea nodrag nopan"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onPointerDown={stopFlowInteraction}
+              onMouseDown={stopFlowInteraction}
+              autoFocus
+              spellCheck={false}
+            />
+            <footer className="template-modal-footer">
+              <span>Placeholders: <code>{'{context}'}</code> <code>{'{query}'}</code> <code>{'{history_block}'}</code></span>
+            </footer>
+          </div>
+        </div>
+      )}
+    </>
+  );
+});
+
+const FlowFieldRow = memo(({ field, nodeId, onFieldChange, nodeType }) => {
   const handleChange = useCallback(
     (value) => onFieldChange(nodeId, field.id, value),
     [onFieldChange, nodeId, field.id],
   );
+
+  const isPromptTemplate = nodeType === "prompt_template" && field.type === "text";
+
   return (
     <div
       className="generated-field-row flow-field-row"
       title={field.description}
     >
       <span>{field.label}</span>
-      <FlowFieldInput field={field} onChange={handleChange} />
+      {isPromptTemplate
+        ? <ExpandableFieldInput field={field} onChange={handleChange} />
+        : <FlowFieldInput field={field} onChange={handleChange} />
+      }
     </div>
   );
 });
@@ -346,6 +409,7 @@ const SavedComponentNode = memo(({ id, data }) => {
               field={field}
               nodeId={id}
               onFieldChange={data.onFieldChange}
+              nodeType={component._backendRef}
             />
           ))}
         </div>

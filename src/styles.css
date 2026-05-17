@@ -1459,3 +1459,201 @@ textarea.flow-field-control {
     user-select: none !important;
 }
 
+/* ── Expandable Field Trigger (Prompt Template only) ──────── */
+.expandable-field-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 30px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 5px 8px;
+    color: var(--text-secondary);
+    background: var(--bg-input);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    transition:
+        border-color 150ms,
+        background 150ms,
+        color 150ms;
+}
+
+.expandable-field-trigger:hover {
+    border-color: var(--border-focus);
+    background: var(--accent-soft);
+    color: var(--text-primary);
+}
+
+.expand-icon {
+    flex-shrink: 0;
+    margin-left: 6px;
+    font-size: 14px;
+    color: var(--text-muted);
+    transition: color 150ms;
+}
+
+.expandable-field-trigger:hover .expand-icon {
+    color: var(--accent);
+}
+
+/* ── Template Editor Modal ────────────────────────────────── */
+.template-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(6px);
+    animation: tmpl-fade-in 150ms ease;
+}
+
+@keyframes tmpl-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.template-modal-panel {
+    width: min(85vw, 900px);
+    height: min(80vh, 720px);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-md);
+    border-radius: 16px;
+    background: var(--bg-node);
+    box-shadow:
+        0 32px 80px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    animation: tmpl-slide-up 200ms ease;
+    overflow: hidden;
+}
+
+@keyframes tmpl-slide-up {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.template-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.template-modal-header strong {
+    font-size: 15px;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+}
+
+.template-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.template-modal-save {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 14px;
+    border: 1px solid var(--accent);
+    border-radius: 7px;
+    color: #fff;
+    background: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+        background 150ms,
+        box-shadow 150ms;
+}
+
+.template-modal-save:hover {
+    background: var(--accent-hover);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.template-modal-close {
+    display: inline-flex;
+    width: 30px;
+    height: 30px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text-muted);
+    background: transparent;
+    font-size: 14px;
+    cursor: pointer;
+    transition:
+        border-color 120ms,
+        color 120ms,
+        background 120ms;
+}
+
+.template-modal-close:hover {
+    border-color: var(--border-focus);
+    color: var(--text-primary);
+    background: var(--accent-soft);
+}
+
+.template-modal-textarea {
+    flex: 1;
+    width: 100%;
+    margin: 0;
+    padding: 18px 20px;
+    border: none;
+    color: var(--text-primary);
+    background: var(--bg-field);
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    resize: none;
+    outline: none;
+    tab-size: 2;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-md) transparent;
+}
+
+.template-modal-textarea::placeholder {
+    color: var(--text-muted);
+}
+
+.template-modal-footer {
+    display: flex;
+    align-items: center;
+    padding: 10px 18px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.template-modal-footer span {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.template-modal-footer code {
+    display: inline-block;
+    margin: 0 3px;
+    padding: 1px 6px;
+    border: 1px solid rgba(124, 58, 237, 0.2);
+    border-radius: 4px;
+    color: #a78bfa;
+    background: rgba(124, 58, 237, 0.08);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 700;
+}
