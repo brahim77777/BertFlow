@@ -575,6 +575,7 @@ function App() {
         {
           id: selected.id,
           type: "componentNode",
+          dragHandle: ".node-header",
           position,
           data: {
             component: selected,

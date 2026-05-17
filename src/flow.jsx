@@ -602,6 +602,7 @@ export default function Flow() {
       {
         id: makeId("flow-node"),
         type: "savedComponent",
+        dragHandle: ".generated-component-header",
         position: {
           x: 120 + current.length * 38,
           y: 120 + current.length * 28,

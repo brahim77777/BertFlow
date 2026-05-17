@@ -1,6 +1,8 @@
 # Ignore your custom folder
 files/
 
+*.dll
+rag_rust.pyd
 # Node modules
 node_modules/
 
@@ -28,10 +30,12 @@ Thumbs.db
 # Cache
 .cache/
 .parcel-cache/
+__pycache__/
 
 # Temporary files
 *.tmp
 *.temp
+.fastembed_cache
 
 # React / bundler artifacts
 coverage/

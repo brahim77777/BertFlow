@@ -1319,3 +1319,40 @@ textarea.flow-field-control {
         grid-template-columns: 1fr;
     }
 }
+
+/* Drag handle cursors */
+.generated-component-header,
+.node-header {
+    cursor: grab !important;
+    user-select: none !important;
+}
+.generated-component-header:active,
+.node-header:active {
+    cursor: grabbing !important;
+}
+
+/* Allow text selection inside custom nodes */
+.generated-component-node,
+.builder-node {
+    user-select: text !important;
+}
+
+/* Make headers, ports, static labels, and section titles unselectable to prevent accidental highlights */
+.generated-component-header,
+.generated-component-header *,
+.node-header,
+.node-header *,
+.node-section-title,
+.generated-port-list,
+.generated-port-row,
+.generated-port-row *,
+.port-panel,
+.port-list,
+.port-row,
+.port-row *,
+.generated-field-row > span,
+.field-meta,
+.field-meta * {
+    user-select: none !important;
+}
+
