@@ -26,8 +26,8 @@ User actions → React UI → WebSocket → Python Backend
 ```
 
 ### JSON Contracts
-1. **node_type_definitions** (backend → frontend): Auto-sent on connect, also via `get_node_types` request
-2. **RunRequest** (frontend → backend): Graph execution payload using `node_type` from backend schema
+1. **node_type_definitions** (backend → frontend): Auto-sent on connect, also via `get_node_types` request. Ports now include `mode` field (`"data"` or `"extension"`)
+2. **RunRequest** (frontend → backend): Graph execution payload using `node_type` from backend schema. Edges now include `mode` field
 3. **execution_state** (backend → frontend): `run_accepted`, `run_finished` with per-node state
 4. **stream_chunk** (backend → frontend): `{type, run_id, node_id, port, data}` — incremental output from streaming nodes
 
@@ -51,7 +51,9 @@ backend/
 └── nodes/
     ├── __init__.py
     ├── builtin.py            # 3 nodes: PromptBuilder, BrahimYoucefDemo, OutputNode
-    └── openrouter.py         # OpenRouterLLM — streaming LLM node with SSE
+    ├── openrouter.py         # OpenRouterLLM — streaming LLM node with SSE + tool support
+    ├── calculator.py         # CalculatorTool — safe AST-based math evaluator (extension)
+    └── web_search.py         # WebSearchTool — SerpAPI integration (extension)
 
 src/
 ├── main.jsx                  # App entry, Builder view, mode-switch with hash+localStorage persistence
@@ -156,3 +158,43 @@ Then click "Fetch from Backend" in the Flow view to see it appear.
 - [ ] adding a document upload component, and using "ref" to get it's value.
 - [ ] implement the reference instead of actual value in fileUpload + change saved files folder + adding multiple compatible formats
 - [ ] add a Ctrl+Z functionality
+- [ ] update the requirements.txt
+
+## COMPLETED FIXES
+
+- [x] **Shared cache & result store across connections** — `ws_server.py`: moved `InMemoryResultStore` and `InMemoryExecutionCache` to module-level `_shared_store` / `_shared_cache` so all WebSocket connections share the same cache and result store. Previously each connection got its own empty cache, meaning no cross-client cache hits.
+- [x] **O(E) → O(degree) edge scanning in executor** — `executor.py:98-107`: replaced the post-wave loop that iterated over all edges with a direct adjacency list lookup (`adj[src]`). For a graph with N nodes and E edges across W waves, this reduces edge scanning from O(W × E) to O(E) total.
+- [x] **Streaming node support** — Added `emit(port, data)` callback pattern. Nodes with `emit` parameter in `run()` signature stream chunks to frontend via `stream_chunk` WS message. Executor accumulates chunks into final output. Frontend shows "streaming…" status with live preview. Example: `openrouter.py` streams OpenRouter SSE responses.
+- [x] **Frontend type coercion for args** — `flow.jsx:675-693`: field values are now coerced to their backend-declared types (`integer`/`number` → `Number()`, `boolean` → `Boolean()`) before sending in the run payload. Prevents 400 errors from APIs that reject string-typed numbers.
+- [x] **Inline streaming preview in nodes** — `flow.jsx:343-352` + `styles.css`: live preview area appears directly in the node body during streaming (no click needed). Shows full text with scroll, purple pulsing border on the node. Removed `previewLines()` truncation from the inline preview.
+- [x] **OpenRouter node: sync → async HTTP** — `openrouter.py`: replaced `requests` + `asyncio.to_thread` with `httpx.AsyncClient.stream()`. The `emit` callback was silently failing because it was called from a blocking thread where coroutines were never awaited. Now everything runs in the event loop and `await emit()` actually sends WS messages. Added `httpx` dependency.
+- [x] **Extension / capability injection system** — Added `mode` field (`"data"` | `"extension"`) to `PortDefinition`, `Edge`, and `NodeTypeSchema.to_dict()`. Extension nodes run first in topological sort (leaf nodes, in_degree = 0). Consumer nodes collect extension outputs from `node_inputs` and wrap them into `context["extensions"][port_name]` as lists. Validator allows multiple edges to extension ports. OpenRouter reads tools from context, sends tool definitions to API, and handles tool calls with inline execute. UI shows extension ports with dashed borders and amber handles, extension edges as dashed amber lines. New nodes: `calculator.py` (safe AST-based math), `web_search.py` (SerpAPI integration).
+
+## KNOWN BUGS & RESOLUTIONS
+
+### Bug: Connecting tool nodes broke the prompt input ("Prompt input is empty")
+
+**Cause:** The initial design used a separate `_resolve_extensions()` phase that ran before the main execution graph. Both phases operated on the same `node_states` dict and shared the same `pending` counter. When extension nodes (Calculator, WebSearch) completed in the pre-phase, their status was set to `"completed"`, but the main phase's topological sort still counted them in `pending` and `in_deg` calculations. This created a mismatch:
+1. Extension phase runs Calculator → marks it `"completed"`
+2. Main phase builds `in_deg` including the tool → OpenRouter edge
+3. OpenRouter's `in_deg` becomes 2 (prompt + tool)
+4. Calculator is already `"completed"` so its edge never fires in the main phase's wave propagation
+5. OpenRouter's `in_deg` never drops to 0, it never runs
+6. The remaining pending nodes get marked as failed with "Dependency not satisfied"
+
+Even when mode detection worked correctly for server-fetched components, the two-phase design created this state corruption.
+
+**Fix:** Removed the separate extension resolution phase entirely. Now:
+- All edges (data + extension) share the same adjacency graph
+- Extension nodes run first naturally (they're leaf nodes with in_degree = 0)
+- In `_run_node`, extension port values are collected from `node_inputs` and wrapped into `context["extensions"][port_name]` as lists
+- Single topological sort, single `pending` counter, no state corruption
+- The frontend fallback checks `tgt.data._backendDef.ports.inputs` directly when the port ID lookup fails
+
+### Bug: Adding a second tool overwrote the first ("calculator gets replaced by web_search")
+
+**Cause:** In the executor's wave propagation loop, `node_inputs[tgt][tgt_port] = inp` used direct assignment. When multiple extension edges targeted the same port (e.g., both Calculator and WebSearch → OpenRouter's `tools` port), the second tool's output overwrote the first. The port received only the last-connected tool.
+
+**Fix:** Changed to `node_inputs[tgt].setdefault(tgt_port, []).append(inp)` — all connections to the same port accumulate in a list. In `_run_node`:
+- Data ports: single-element lists are unwrapped (`inputs[k] = v[0]` if `len(v) == 1`) for backward compatibility
+- Extension ports: receive the full list of all connected tool outputs

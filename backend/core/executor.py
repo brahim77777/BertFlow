@@ -4,6 +4,7 @@ import asyncio
 import time
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from backend.core.errors import NodeExecutionError
 from backend.core.logging import logger
@@ -112,7 +113,7 @@ class AsyncGraphExecutor:
                             if node_states[tgt].status != "pending":
                                 continue
                             inp = output_map[src].get(src_port, "")
-                            node_inputs[tgt][tgt_port] = inp
+                            node_inputs[tgt].setdefault(tgt_port, []).append(inp)
                             in_deg[tgt] -= 1
                             if in_deg[tgt] == 0:
                                 ready.append(tgt)
@@ -151,7 +152,22 @@ class AsyncGraphExecutor:
             await on_node_status(nid, "running")
 
         args = dict(node.args)
-        inputs = dict(node_inputs.get(nid, {}))
+        raw_inputs = node_inputs.get(nid, {})
+        inputs = {}
+        for k, v in raw_inputs.items():
+            inputs[k] = v[0] if isinstance(v, list) and len(v) == 1 else v
+
+        ext_ports = [p for p in reg.inputs.values() if p.mode == "extension"]
+        ctx: dict[str, Any] = {}
+        if ext_ports:
+            extensions: dict[str, Any] = {}
+            for port_def in ext_ports:
+                val = raw_inputs.get(port_def.name)
+                if val is not None:
+                    extensions[port_def.name] = val if isinstance(val, list) else [val]
+            if extensions:
+                ctx["extensions"] = extensions
+
         stream_buf: dict[str, list[str]] = defaultdict(list)
 
         async def emit(port: str, data: str) -> None:
@@ -173,7 +189,7 @@ class AsyncGraphExecutor:
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
-                outputs = await reg.run(args, inputs, nid, emit)
+                outputs = await reg.run(args, inputs, ctx, emit)
                 node_states[nid].finished_at = time.time()
                 if node.config.cache:
                     self._cache.put(node.node_type, args, inputs, outputs)
