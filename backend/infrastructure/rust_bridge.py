@@ -5,17 +5,32 @@ Keeping Rust calls here helps isolate low-level integration from route logic.
 
 from __future__ import annotations
 
+import ctypes
 import os
 import sys
 from pathlib import Path
 from typing import List
 
-# On Windows (Python ≥ 3.8) dependent DLLs like pdfium.dll are NOT found
-# via CWD or PATH.  We must explicitly register the directory that holds
-# pdfium.dll (the project root) before loading the native extension.
-_project_root = str(Path(__file__).resolve().parents[2])
-if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
-    os.add_dll_directory(_project_root)
+# Resolve the project root (3 levels up from this file: backend/infrastructure -> bertflow/)
+_project_root = Path(__file__).resolve().parents[2]
+
+if sys.platform == "win32":
+    # Windows (Python >= 3.8): dependent DLLs like pdfium.dll are NOT found
+    # via CWD or PATH. We must explicitly register the directory before loading.
+    if hasattr(os, "add_dll_directory"):
+        os.add_dll_directory(str(_project_root))
+elif sys.platform == "linux":
+    # Linux: preload libpdfium.so before importing the Rust extension so the
+    # dynamic linker can resolve the symbol when rag_rust calls dlopen().
+    _pdfium_path = _project_root / "libpdfium.so"
+    if _pdfium_path.exists():
+        ctypes.CDLL(str(_pdfium_path), mode=ctypes.RTLD_GLOBAL)
+    # Also honour LD_LIBRARY_PATH if set by the user
+    _ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+    if str(_project_root) not in _ld_path:
+        os.environ["LD_LIBRARY_PATH"] = (
+            f"{_project_root}:{_ld_path}" if _ld_path else str(_project_root)
+        )
 
 import rag_rust
 

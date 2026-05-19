@@ -4,7 +4,7 @@
 
 | Layer | Technology | Version |
 |-------|-----------|---------|
-| Backend | Python + asyncio | 3.14.3 |
+| Backend | Python + asyncio | **3.13.x** (CPython — required by `rag_rust.so`) |
 | WebSocket | websockets | 16.0 |
 | Frontend (React) | React + Vite + @xyflow/react | 18.x / 7.x / 12.x |
 | Runtime | Bun | 1.3.13 |
@@ -90,12 +90,42 @@ E2E (manual): WebSocket server verified with full cycle:
 
 ## RUNNING
 
-```bash
-# Terminal 1: Start backend
-python3 -m backend --host 127.0.0.1 --port 8765
+> ⚠️ The `rag_rust` extension is compiled for **CPython 3.13 only**. Using any other Python version will cause an immediate segfault or ImportError.
 
-# Terminal 2: Start frontend
-source ~/.bash_profile && bun run dev
+### Linux (Brahim)
+
+```bash
+# Terminal 1 — backend (uses uv + backend/backend-env which has Python 3.13 + rag_rust)
+./run-backend.sh --host localhost --port 8765
+
+# Terminal 2 — frontend
+bun run dev
+```
+
+### Windows (Collaborator)
+
+```powershell
+# Terminal 1 — backend (must point at the 3.13 venv explicitly)
+.\run-backend.ps1 -Python "backend\backend-env\Scripts\python.exe"
+
+# Terminal 2 — frontend
+bun run dev        # or: .\run-dev.ps1
+```
+
+**First-time Windows setup:**
+```powershell
+# 1. Install Python 3.13 from python.org (not 3.14+)
+# 2. Create the venv
+uv venv backend/backend-env --python 3.13
+# 3. Install Python deps
+uv pip install --python backend/backend-env websockets httpx
+# 4. Rebuild rag_rust for Windows (see CONTRIBUTING.md § 4)
+cd rag_rust_src
+..\backend\backend-env\Scripts\Activate.ps1
+maturin develop --release
+deactivate
+# 5. Install frontend deps
+bun install
 ```
 
 ## ADDING A NODE
@@ -139,6 +169,53 @@ class MyStreamer:
 Then click "Fetch from Backend" in the Flow view to see it appear.
 
 
+## CURRENT PROGRESS & SUMMARY
+
+### What the app does right now
+
+BertFlow is a **visual Agentic RAG pipeline builder**. You drag backend-registered node types onto a canvas, wire them together, and hit **Run Flow** — the Python backend executes the graph in topological waves (parallel where possible) and streams results back in real time.
+
+**Working end-to-end today:**
+
+| Feature | Status |
+|---------|--------|
+| Visual node canvas (React Flow) | ✅ Working |
+| Backend node discovery via WebSocket | ✅ Working |
+| Graph execution (topological + parallel) | ✅ Working |
+| Streaming output (chunk-by-chunk to UI) | ✅ Working |
+| Per-node status badges + duration | ✅ Working |
+| Output preview modal (first 15 lines) | ✅ Working |
+| Extension / tool injection system | ✅ Working |
+| PDF extraction (PDFium, Rust) | ✅ Working |
+| Semantic chunking (Rust) | ✅ Working |
+| Local embeddings via fastembed (Rust) | ✅ Working |
+| ZeroEntropy API embeddings (Rust) | ✅ Working |
+| LanceDB vector store (Rust) | ✅ Working |
+| Dartboard reranking (Rust) | ✅ Working |
+| OpenRouter LLM node (streaming) | ✅ Working |
+| Ollama LLM node | ✅ Working |
+| Calculator tool node (extension) | ✅ Working |
+| Web search tool (SerpAPI, extension) | ✅ Working |
+| Shared result store across connections | ✅ Working |
+| SHA-256 node output cache | ✅ Working |
+| File upload → `files/` folder | ✅ Working |
+
+### May 2026 — Critical bug fixed
+
+**Problem:** Clicking "Fetch from Backend" immediately crashed the Python process (exit 139, segfault).  
+**Root cause:** The `rag_rust.so` compiled that day from `rag_rust_src/` had a fatal initialization bug. Python loaded it and died instantly — no traceback.  
+**Fix:** Replaced with the stable `.so` from `~/Documents/Agentic-RAG-Rust-Core-PFE-26/rustvenv/` (same PyO3 version, same API surface, no crash).  
+**Secondary bug fixed:** `BGESmallENV15` was the default embedding model but was missing from the match arm in `embeddings.rs` — local embedding always errored. Fixed in source.
+
+### Architecture decisions locked in
+
+- **Rust extension is pre-compiled** — do not commit `.so`/`.pyd` to git; rebuild locally when source changes (see CONTRIBUTING.md)
+- **Python must be exactly 3.13** — the ABI is baked into the `.so` filename (`cpython-313`)
+- **Backend launched via `uv run --no-sync`** on Linux, pointing at `backend/backend-env`
+- **`build_registry()` runs per WebSocket connection** — modules are cached by Python after first import so this is cheap; if Rust init fails on first connection it will fail on all subsequent ones too
+
+---
+
 ## COMPLETED FIXES
 
 - [x] **Shared cache & result store across connections** — `ws_server.py`: moved `InMemoryResultStore` and `InMemoryExecutionCache` to module-level `_shared_store` / `_shared_cache` so all WebSocket connections share the same cache and result store. Previously each connection got its own empty cache, meaning no cross-client cache hits.
@@ -160,15 +237,7 @@ Then click "Fetch from Backend" in the Flow view to see it appear.
 - [ ] add a Ctrl+Z functionality
 - [ ] update the requirements.txt
 
-## COMPLETED FIXES
-
-- [x] **Shared cache & result store across connections** — `ws_server.py`: moved `InMemoryResultStore` and `InMemoryExecutionCache` to module-level `_shared_store` / `_shared_cache` so all WebSocket connections share the same cache and result store. Previously each connection got its own empty cache, meaning no cross-client cache hits.
-- [x] **O(E) → O(degree) edge scanning in executor** — `executor.py:98-107`: replaced the post-wave loop that iterated over all edges with a direct adjacency list lookup (`adj[src]`). For a graph with N nodes and E edges across W waves, this reduces edge scanning from O(W × E) to O(E) total.
-- [x] **Streaming node support** — Added `emit(port, data)` callback pattern. Nodes with `emit` parameter in `run()` signature stream chunks to frontend via `stream_chunk` WS message. Executor accumulates chunks into final output. Frontend shows "streaming…" status with live preview. Example: `openrouter.py` streams OpenRouter SSE responses.
-- [x] **Frontend type coercion for args** — `flow.jsx:675-693`: field values are now coerced to their backend-declared types (`integer`/`number` → `Number()`, `boolean` → `Boolean()`) before sending in the run payload. Prevents 400 errors from APIs that reject string-typed numbers.
-- [x] **Inline streaming preview in nodes** — `flow.jsx:343-352` + `styles.css`: live preview area appears directly in the node body during streaming (no click needed). Shows full text with scroll, purple pulsing border on the node. Removed `previewLines()` truncation from the inline preview.
-- [x] **OpenRouter node: sync → async HTTP** — `openrouter.py`: replaced `requests` + `asyncio.to_thread` with `httpx.AsyncClient.stream()`. The `emit` callback was silently failing because it was called from a blocking thread where coroutines were never awaited. Now everything runs in the event loop and `await emit()` actually sends WS messages. Added `httpx` dependency.
-- [x] **Extension / capability injection system** — Added `mode` field (`"data"` | `"extension"`) to `PortDefinition`, `Edge`, and `NodeTypeSchema.to_dict()`. Extension nodes run first in topological sort (leaf nodes, in_degree = 0). Consumer nodes collect extension outputs from `node_inputs` and wrap them into `context["extensions"][port_name]` as lists. Validator allows multiple edges to extension ports. OpenRouter reads tools from context, sends tool definitions to API, and handles tool calls with inline execute. UI shows extension ports with dashed borders and amber handles, extension edges as dashed amber lines. New nodes: `calculator.py` (safe AST-based math), `web_search.py` (SerpAPI integration).
+- [ ] adding reference resolve logic when getting huge file sizes -----> to verify
 
 ## KNOWN BUGS & RESOLUTIONS
 
@@ -198,3 +267,9 @@ Even when mode detection worked correctly for server-fetched components, the two
 **Fix:** Changed to `node_inputs[tgt].setdefault(tgt_port, []).append(inp)` — all connections to the same port accumulate in a list. In `_run_node`:
 - Data ports: single-element lists are unwrapped (`inputs[k] = v[0]` if `len(v) == 1`) for backward compatibility
 - Extension ports: receive the full list of all connected tool outputs
+
+### Bug: "Fetch from Backend" instantly crashes Python (segfault, exit 139) — May 2026
+
+**Cause:** The `rag_rust.so` recompiled from `rag_rust_src/` had a fatal initialization bug. The moment Python executed `import rag_rust` the process died — no traceback, no error message, just exit 139.
+
+**Fix:** Replaced the broken `.so` with the stable build from `Agentic-RAG-Rust-Core-PFE-26/rustvenv/`. Both share the same PyO3 0.28.3 + Python 3.13 ABI and identical API surface.

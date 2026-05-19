@@ -1,50 +1,48 @@
-# BertLike Component Builder
+# BertFlow
 
-A Bun + Vite React Flow prototype for creating dynamic node components.
+A Bun + Vite + React Flow app for building and executing Agentic RAG pipelines visually,
+backed by a Python WebSocket server and a Rust (PyO3) extension for embeddings, PDF
+extraction, and vector search.
 
-## Run
+## Quick Start
 
-```powershell
-.\run-dev.ps1
-```
+### Frontend
 
-or:
-
-```powershell
+```bash
+bun install   # first time only
 bun run dev
 ```
 
-Then open:
+Open: **http://localhost:5173**
 
-```text
-http://localhost:5173
+### Backend (Linux)
+
+```bash
+./run-backend.sh --host localhost --port 8765
 ```
 
-Install dependencies first if this is a fresh checkout:
+### Backend (Windows)
 
 ```powershell
-bun install
+.\run-backend.ps1 -Python "backend\backend-env\Scripts\python.exe"
 ```
+
+> The backend requires **Python 3.13** — the `rag_rust` extension is compiled for CPython 3.13.
+> Using any other Python version will crash the server.
+
+## Collaborating / Setup from Scratch
+
+See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for:
+- Full project architecture
+- First-time setup on Linux and Windows
+- Rules for handling the compiled `rag_rust` binary
+- GitHub workflow and `.gitignore` requirements
+- What changed in May 2026 and why
 
 ## What It Does
 
-- Create, duplicate, and select saved components.
-- Auto-save component definitions to `localStorage`.
-- While the Vite dev server is running, auto-write the selected component to `src/components/generated/<ComponentName>.jsx`.
-- Edit the component label and description.
-- Add dynamic fields: text, number, toggle, checkbox, select, and long text.
-- Add file fields. The field value stores only the uploaded filename, and the file is written to the local `files/` folder.
-- Add labeled input and output ports.
-- Set a free-form type string on each port, such as `int`, `string`, or `List[string]`.
-- Edit field and port descriptions, shown as hover tooltips.
-- Export the selected component as JSON.
-
-Generated components are React Flow node components that import `Handle` and `Position` from `@xyflow/react`.
-
-## Backend
-
-The Python WebSocket backend lives in `backend/`. Start it with:
-
-```bash
-python3 -m backend --host 127.0.0.1 --port 8765
-```
+- Drag-and-drop pipeline builder (React Flow)
+- Live backend node types fetched over WebSocket
+- Nodes execute as an async graph — parallel where possible
+- Node types: PDF extraction, chunking, embeddings, LanceDB indexing/search, LLM (Ollama / OpenRouter), web search, calculator, and more
+- Per-node output preview in the UI

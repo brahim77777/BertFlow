@@ -1,54 +1,59 @@
-# Ignore your custom folder
+# ── User data / uploads ───────────────────────────────────────────────────────
 files/
+lancedb_store/
+graphify-out/
 
-*.dll
-rag_rust.pyd
-# Node modules
+# ── Python environments — NEVER commit these ──────────────────────────────────
+backend/backend-env/
+bertenv/
+*.venv/
+.venv/
+
+# ── Compiled Rust extension — platform-specific, always rebuild locally ────────
+rag_rust_src/target/
+*.so
+*.pyd
+# keep pdfium shared libs (they ARE committed intentionally)
+!libpdfium.so
+!pdfium.dll
+
+# ── Python caches ─────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.ruff_cache/
+.fastembed_cache/
+*.kate-swp
+
+# ── Node / Bun ────────────────────────────────────────────────────────────────
 node_modules/
-
-# Build outputs
 dist/
 build/
-
-backend/app
-lancedb_store
-# Logs
+coverage/
+.next/
+out/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Environment variables
+# ── Environment variables ─────────────────────────────────────────────────────
 .env
 .env.*
 
-# OS files
+# ── OS / editor ───────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-
-# IDEs
 .vscode/
 .idea/
-
-# Cache
+*.map
 .cache/
 .parcel-cache/
-__pycache__/
 
-# Temporary files
+# ── Misc project-specific ─────────────────────────────────────────────────────
+backend/app
+time
 *.tmp
 *.temp
-.fastembed_cache
-
-# React / bundler artifacts
-coverage/
-.next/
-out/
-
-# Optional: ignore compiled JS maps
-*.map
-
-# Other
-time
 *.tex
 json_contracts.md
 presentation_plan.md
@@ -56,4 +61,3 @@ PROJECT_MAP.md
 questions.txt
 full_logic_pipeline.md
 data_flow.md
-PROJECT_MAP.md

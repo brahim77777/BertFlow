@@ -83,8 +83,8 @@ class LanceDBIndexer:
         },
         "embed_backend": {
             "type": "string",
-            "default": "local",
-            "description": "Embedding backend: 'zembed' or 'local'",
+            "default": "zembed",
+            "description": "Embedding backend: 'zembed' (ZeroEntropy API) or 'local' (fastembed, requires recompiled rag_rust)",
         },
         "batch_size": {
             "type": "number",
@@ -126,7 +126,17 @@ class LanceDBIndexer:
         try:
             # ── 1. Load embedding model ──────────────────────────────
             use_zembed = embed_backend != "local"
-            rust_bridge.load_embed_model(use_zembed=use_zembed)
+
+            # Guard: local model requires a recompiled rag_rust.so that
+            # includes BGESmallENV15 in its match arm. The current binary
+            # (copied from Agentic-RAG-Rust-Core-PFE-26) does not have it.
+            # Until rag_rust_src/ is recompiled, use embed_backend='zembed'.
+            if not use_zembed:
+                probe = rust_bridge.load_embed_model(use_zembed=False)
+                # load_embed_model returns None on success; an exception means
+                # the model name is unsupported in the current binary.
+            else:
+                rust_bridge.load_embed_model(use_zembed=True)
 
             # ── 2. Embed all chunks in batches ───────────────────────
             embeddings: List[List[float]] = []
