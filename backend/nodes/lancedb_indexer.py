@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 from typing import Any, List
 
-from backend.core.registry import register_node
 import backend.infrastructure.rust_bridge as rust_bridge
+from backend.core.registry import register_node
 
 # Default DB directory relative to the project root
 _DEFAULT_DB_DIR = str(Path(__file__).resolve().parents[2] / "lancedb_store")
@@ -17,19 +17,18 @@ def _coerce_chunks(raw) -> List[str]:
         return [str(c) for c in raw if c]
     if isinstance(raw, str):
         import json
+
         try:
             parsed = json.loads(raw)
             if isinstance(parsed, list):
                 return [str(c) for c in parsed if c]
         except (json.JSONDecodeError, ValueError):
             pass
-        # Treat the whole string as a single chunk
         return [raw] if raw.strip() else []
     return []
 
 
 def _coerce_sources(raw, n: int) -> List[str]:
-    """Accept a list of strings or fall back to a repeated default."""
     if isinstance(raw, list) and len(raw) >= n:
         return [str(s) for s in raw[:n]]
     if isinstance(raw, str) and raw.strip():
@@ -38,7 +37,6 @@ def _coerce_sources(raw, n: int) -> List[str]:
 
 
 def _coerce_pages(raw, n: int) -> List[int]:
-    """Accept a list of ints or fall back to sequential page numbers."""
     if isinstance(raw, list) and len(raw) >= n:
         try:
             return [int(p) for p in raw[:n]]
@@ -48,26 +46,27 @@ def _coerce_pages(raw, n: int) -> List[int]:
 
 
 @register_node
-class LanceDBIndexer:
-    node_type = "lancedb_indexer"
-    label = "LanceDB Indexer"
+class LanceDBStore:
+    node_type = "lancedb_store"
+    label = "LanceDB Store"
     description = (
-        "Embeds text chunks and writes them to a LanceDB vector store. "
-        "Supports both the local Rust embedding model and the ZEmbed API."
+        "Vector store node — indexes chunks and/or searches by query. "
+        "Connect chunks to index, connect a query to search, or both."
     )
     category = "storage"
-    version = "1.0.0"
+    version = "2.0.0"
     ui_config = {"icon": "database", "color": "#F59E0B", "category_order": 5}
 
     inputs = {
-        "chunks":   {"type": "array",  "required": True},
-        "sources":  {"type": "array",  "required": False},
-        "pages":    {"type": "array",  "required": False},
+        "chunks": {"type": "array", "required": False},
+        "sources": {"type": "array", "required": False},
+        "pages": {"type": "array", "required": False},
+        "query": {"type": "string", "required": False},
     }
 
     outputs = {
-        "status":   {"type": "string"},
-        "metadata": {"type": "json"},
+        "results": {"type": "array"},
+        "contexts": {"type": "string"},
     }
 
     args_schema = {
@@ -91,6 +90,11 @@ class LanceDBIndexer:
             "default": 32,
             "description": "Number of chunks to embed per batch",
         },
+        "top_k": {
+            "type": "number",
+            "default": 5,
+            "description": "Number of search results to return",
+        },
         "rebuild": {
             "type": "boolean",
             "default": False,
@@ -100,81 +104,102 @@ class LanceDBIndexer:
 
     @staticmethod
     async def run(args: dict, inputs: dict, context: Any) -> dict:
-        raw_chunks  = inputs.get("chunks",  [])
-        raw_sources = inputs.get("sources", [])
-        raw_pages   = inputs.get("pages",   [])
+        db_dir = str(args.get("db_dir", _DEFAULT_DB_DIR)).strip() or _DEFAULT_DB_DIR
+        table_name = str(args.get("table_name", "documents")).strip() or "documents"
+        embed_backend = str(args.get("embed_backend", "local")).strip().lower()
+        batch_size = max(1, int(args.get("batch_size", 32)))
+        top_k = max(1, int(args.get("top_k", 5)))
+        rebuild = bool(args.get("rebuild", False))
 
-        chunks = _coerce_chunks(raw_chunks)
-        if not chunks:
-            return {
-                "status":   "error",
-                "metadata": {"error": "No chunks provided"},
-            }
-
-        n = len(chunks)
-        sources = _coerce_sources(raw_sources, n)
-        pages   = _coerce_pages(raw_pages, n)
-
-        db_dir       = str(args.get("db_dir", _DEFAULT_DB_DIR)).strip() or _DEFAULT_DB_DIR
-        table_name   = str(args.get("table_name", "documents")).strip() or "documents"
-        embed_backend = str(args.get("embed_backend", "zembed")).strip().lower()
-        batch_size   = max(1, int(args.get("batch_size", 32)))
-        rebuild      = bool(args.get("rebuild", False))
-
+        use_zembed = embed_backend != "local"
         os.makedirs(db_dir, exist_ok=True)
 
+        raw_chunks = inputs.get("chunks", [])
+        query = str(inputs.get("query", "") or "").strip()
+        chunks = _coerce_chunks(raw_chunks)
+
         try:
-            # ── 1. Load embedding model ──────────────────────────────
-            use_zembed = embed_backend != "local"
+            rust_bridge.load_embed_model(use_zembed=use_zembed)
 
-            # Guard: local model requires a recompiled rag_rust.so that
-            # includes BGESmallENV15 in its match arm. The current binary
-            # (copied from Agentic-RAG-Rust-Core-PFE-26) does not have it.
-            # Until rag_rust_src/ is recompiled, use embed_backend='zembed'.
-            if not use_zembed:
-                probe = rust_bridge.load_embed_model(use_zembed=False)
-                # load_embed_model returns None on success; an exception means
-                # the model name is unsupported in the current binary.
-            else:
-                rust_bridge.load_embed_model(use_zembed=True)
+            # ── Phase 1: Index (if chunks are provided) ──────────────
+            if chunks:
+                n = len(chunks)
+                sources = _coerce_sources(inputs.get("sources", []), n)
+                pages = _coerce_pages(inputs.get("pages", []), n)
 
-            # ── 2. Embed all chunks in batches ───────────────────────
-            embeddings: List[List[float]] = []
-            if use_zembed:
-                embeddings = rust_bridge.embed_texts_zembed(chunks, batch_size)
-            else:
-                embeddings = rust_bridge.embed_texts_local(chunks, batch_size)
+                if use_zembed:
+                    embeddings = rust_bridge.embed_texts_zembed(chunks, batch_size)
+                else:
+                    embeddings = rust_bridge.embed_texts_local(chunks, batch_size)
 
-            if len(embeddings) != n:
-                raise ValueError(
-                    f"Embedding count mismatch: expected {n}, got {len(embeddings)}"
+                if len(embeddings) != n:
+                    raise ValueError(f"Embedding count mismatch: expected {n}, got {len(embeddings)}")
+
+                rust_bridge.lancedb_create_or_open(
+                    db_dir=db_dir,
+                    table_name=table_name,
+                    texts=chunks,
+                    sources=sources,
+                    pages=pages,
+                    embeddings=embeddings,
+                    rebuild=rebuild,
                 )
 
-            # ── 3. Write to LanceDB ──────────────────────────────────
-            rust_bridge.lancedb_create_or_open(
+            # ── Phase 2: Search (if query is provided) ───────────────
+            if not query:
+                # Index-only mode — return confirmation
+                msg = f"Indexed {len(chunks)} chunks into '{table_name}'" if chunks else "No chunks or query provided"
+                return {"results": [], "contexts": msg}
+
+            if use_zembed:
+                q_vecs = rust_bridge.embed_texts_zembed([query], 1)
+            else:
+                q_vecs = rust_bridge.embed_texts_local([query], 1)
+
+            if not q_vecs:
+                raise ValueError("Failed to embed query")
+
+            raw_results = rust_bridge.lancedb_search(
                 db_dir=db_dir,
                 table_name=table_name,
-                texts=chunks,
-                sources=sources,
-                pages=pages,
-                embeddings=embeddings,
-                rebuild=rebuild,
+                query_vector=q_vecs[0],
+                top_k=top_k,
             )
 
-            return {
-                "status": "ok",
-                "metadata": {
-                    "chunks_indexed": n,
-                    "table_name":     table_name,
-                    "db_dir":         db_dir,
-                    "embed_backend":  embed_backend,
-                    "rebuild":        rebuild,
-                    "error":          None,
-                },
-            }
+            # ── Format results ───────────────────────────────────────
+            # Rust lancedb_search returns Vec<(text, source, page, distance)>
+            results: List[dict] = []
+            context_parts: List[str] = []
+
+            for i, row in enumerate(raw_results or []):
+                if isinstance(row, (tuple, list)) and len(row) >= 4:
+                    # Rust returns (text, source, page, distance)
+                    entry = {
+                        "rank": i + 1,
+                        "text": str(row[0]),
+                        "source": str(row[1]),
+                        "page": int(row[2]),
+                        "distance": float(row[3]),
+                    }
+                elif isinstance(row, dict):
+                    entry = {
+                        "rank": i + 1,
+                        "text": row.get("text", ""),
+                        "source": row.get("source", "unknown"),
+                        "page": row.get("page", 0),
+                        "distance": row.get("_distance", None),
+                    }
+                else:
+                    entry = {"rank": i + 1, "text": str(row), "source": "unknown", "page": 0, "distance": None}
+
+                results.append(entry)
+                context_parts.append(
+                    f"[{entry['rank']}] (source: {entry['source']}, p.{entry['page']})\n{entry['text']}"
+                )
+
+            contexts = "\n\n---\n\n".join(context_parts) if context_parts else "(no results found)"
+
+            return {"results": results, "contexts": contexts}
 
         except Exception as exc:
-            return {
-                "status":   "error",
-                "metadata": {"error": f"LanceDB indexing failed: {exc}"},
-            }
+            return {"results": [], "contexts": f"Error: {exc}"}
