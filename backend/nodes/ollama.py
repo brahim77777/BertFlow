@@ -47,7 +47,7 @@ class OllamaLLM:
 
         prompt = inputs.get("prompt", "")
         if not prompt:
-            return {"response": "Error: prompt is empty"}
+            raise ValueError("prompt is empty")
 
         model = args.get("model", "llama3")
         temperature = args.get("temperature", 0.2)
@@ -70,9 +70,8 @@ class OllamaLLM:
                     headers={"Content-Type": "application/json"},
                 ) as resp:
                     if not resp.is_success:
-                        # Attempt to get error details
                         await resp.aread()
-                        return {"response": f"Error: Ollama status {resp.status_code}"}
+                        raise RuntimeError(f"Ollama status {resp.status_code}")
 
                     async for line in resp.aiter_lines():
                         if not line:
@@ -82,7 +81,7 @@ class OllamaLLM:
 
                             # Handle potential error keys returned in JSON body
                             if "error" in chunk:
-                                return {"response": f"Ollama Error: {chunk['error']}"}
+                                raise RuntimeError(f"Ollama Error: {chunk['error']}")
 
                             content = chunk.get("message", {}).get("content", "")
                             if content:
@@ -95,9 +94,11 @@ class OllamaLLM:
                         except json.JSONDecodeError:
                             continue
 
-        except httpx.ConnectError:
-            return {"response": "Error: Could not connect to Ollama. Is it running?"}
-        except Exception as e:
-            return {"response": f"Error: {str(e)}"}
+        except httpx.ConnectError as exc:
+            raise ConnectionError("Could not connect to Ollama. Is it running?") from exc
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(f"Ollama HTTP error: {exc.response.status_code}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"Ollama request failed: {exc}") from exc
 
         return {"response": "".join(full)}

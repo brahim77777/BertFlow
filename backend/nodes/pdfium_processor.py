@@ -20,9 +20,7 @@ class PDFiumProcessor:
     inputs = {}
 
     outputs = {
-        "pages": {"type": "array"},           # Per-page extracted text
-        "page_sources": {"type": "array"},     # Source filename per page
-        "page_numbers": {"type": "array"},     # 1-indexed page number per page
+        "pages": {"type": "array"},           # [{"text": "...", "source": "...", "page": 1}, ...]
         "text": {"type": "string"},            # Unified string
         "filenames": {"type": "array"},        # Unique filenames list
         "metadata": {"type": "json"},
@@ -38,14 +36,11 @@ class PDFiumProcessor:
         if not raw_files.strip():
             return {
                 "pages": [],
-                "page_sources": [],
-                "page_numbers": [],
                 "text": "",
                 "filenames": [],
-                "metadata": {"error": "No file configurations provided"},
+                "metadata": {"total_pages_extracted": 0},
             }
 
-        # Process a single item or an array/comma-separated cluster of target documents
         file_targets = [f.strip() for f in raw_files.split(",") if f.strip()]
         resolved_paths = []
         missing_files = []
@@ -71,50 +66,35 @@ class PDFiumProcessor:
         if missing_files:
             return {
                 "pages": [],
-                "page_sources": [],
-                "page_numbers": [],
                 "text": "",
                 "filenames": file_targets,
                 "metadata": {"error": f"Could not find files: {', '.join(missing_files)}"},
             }
 
         try:
-            # Process each file individually to track per-page source and page number.
-            # This mirrors the reference pipeline in indexing_service.py.
             all_pages = []
-            page_sources = []
-            page_numbers = []
 
             for resolved_path in resolved_paths:
                 filename = os.path.basename(resolved_path)
                 file_pages = rust_bridge.load_pdf_pages_pdfium_many([resolved_path])
                 for page_idx, page_text in enumerate(file_pages, start=1):
-                    all_pages.append(page_text)
-                    page_sources.append(filename)
-                    page_numbers.append(page_idx)
+                    all_pages.append({
+                        "text": page_text,
+                        "source": filename,
+                        "page": page_idx,
+                    })
 
-            # Combine individual elements for basic single-string consumption models
-            unified_text = "\n\n--- Page Break ---\n\n".join(all_pages)
+            unified_text = "\n\n--- Page Break ---\n\n".join(p["text"] for p in all_pages)
 
             return {
                 "pages": all_pages,
-                "page_sources": page_sources,
-                "page_numbers": page_numbers,
                 "text": unified_text,
                 "filenames": [os.path.basename(p) for p in resolved_paths],
                 "metadata": {
                     "total_pages_extracted": len(all_pages),
                     "total_characters": len(unified_text),
                     "files_processed": len(resolved_paths),
-                    "error": None,
                 },
             }
         except Exception as e:
-            return {
-                "pages": [],
-                "page_sources": [],
-                "page_numbers": [],
-                "text": "",
-                "filenames": file_targets,
-                "metadata": {"error": f"Rust Bridge Execution Failure: {str(e)}"},
-            }
+            raise RuntimeError(f"Rust Bridge Execution Failure: {e}")

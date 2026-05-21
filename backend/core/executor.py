@@ -90,18 +90,18 @@ class AsyncGraphExecutor:
 
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
+                # FIX 1: Process ALL results before acting on halt, so every node
+                # in the wave gets its final status — none stay stuck at "running".
+                halt_node: tuple[str, Exception] | None = None
                 for nid, result in zip(wave, results, strict=True):
                     if isinstance(result, Exception):
                         node_states[nid].status = "failed"
                         node_states[nid].error = str(result)
                         if on_node_status:
                             await on_node_status(nid, "failed", node_states[nid].error, get_duration(nid))
-                        if fail_mode == "halt":
-                            state.status = "failed"
-                            state.error = f"Node '{nid}' failed: {result}"
-                            return
-                        elif fail_mode == "skip":
-                            pass
+                        # Record the first failure for halt, but keep iterating.
+                        if fail_mode == "halt" and halt_node is None:
+                            halt_node = (nid, result)
                     else:
                         node_states[nid].status = "completed"
                         if on_node_status:
@@ -110,26 +110,71 @@ class AsyncGraphExecutor:
                             node_states[nid].outputs = self._store.build_outputs(request.run_id, nid, result)
                             for port_name, val in node_states[nid].outputs.items():
                                 output_map[nid][port_name] = val
-
                     pending -= 1
 
+                # Now it's safe to halt — every node in the wave has a terminal status.
+                if halt_node is not None:
+                    nid, result = halt_node
+                    state.status = "failed"
+                    state.error = f"Node '{nid}' failed: {result}"
+                    return
+
+                # Propagate outputs to downstream nodes, and handle skip propagation.
+                #
+                # skip_queue holds nodes whose status just became "failed" or "skipped"
+                # while fail_mode == "skip". We drain it transitively so that every
+                # downstream node that depended on a required output is also marked
+                # "skipped" before the next wave is built — no node ever gets stranded
+                # at "pending" and no ambiguous None leaks into the data ports.
+                skip_queue: deque[str] = deque()
+
                 for src in wave:
-                    if node_states[src].status != "completed":
-                        continue
+                    if node_states[src].status == "completed":
+                        for tgt, src_port, tgt_port in adj.get(src, []):
+                            if node_states[tgt].status != "pending":
+                                continue
+                            raw_val = output_map[src].get(src_port, "")
+                            # Resolve store:// references so downstream nodes get actual data.
+                            if isinstance(raw_val, str) and raw_val.startswith("store://"):
+                                resolved = self._store.resolve(raw_val)
+                                inp = resolved if resolved is not None else raw_val
+                            else:
+                                inp = raw_val
+                            node_inputs[tgt].setdefault(tgt_port, []).append(inp)
+                            in_deg[tgt] -= 1
+                            if in_deg[tgt] == 0:
+                                ready.append(tgt)
+
+                    elif node_states[src].status == "failed" and fail_mode == "skip":
+                        skip_queue.append(src)
+
+                # Drain transitively: a skipped node is itself a skip source.
+                while skip_queue:
+                    src = skip_queue.popleft()
                     for tgt, src_port, tgt_port in adj.get(src, []):
                         if node_states[tgt].status != "pending":
                             continue
-                        raw_val = output_map[src].get(src_port, "")
-                        # Resolve store:// references so downstream nodes get actual data
-                        if isinstance(raw_val, str) and raw_val.startswith("store://"):
-                            resolved = self._store.resolve(raw_val)
-                            inp = resolved if resolved is not None else raw_val
-                        else:
-                            inp = raw_val
-                        node_inputs[tgt].setdefault(tgt_port, []).append(inp)
+
+                        port_def = self._registry.get(request.nodes[tgt].node_type).inputs.get(tgt_port)
                         in_deg[tgt] -= 1
-                        if in_deg[tgt] == 0:
-                            ready.append(tgt)
+
+                        if port_def and port_def.required:
+                            # Required input is gone → skip this node and propagate.
+                            src_outcome = node_states[src].status  # "failed" or "skipped"
+                            node_states[tgt].status = "skipped"
+                            node_states[tgt].error = (
+                                f"Skipped: required input '{tgt_port}' unavailable "
+                                f"(upstream node '{src}' {src_outcome})"
+                            )
+                            if on_node_status:
+                                await on_node_status(tgt, "skipped", node_states[tgt].error, None)
+                            pending -= 1
+                            skip_queue.append(tgt)
+                        else:
+                            # Optional input — node can still run without it.
+                            # Simply don't inject anything; the node uses its own default.
+                            if in_deg[tgt] == 0:
+                                ready.append(tgt)
 
         try:
             await asyncio.wait_for(_do_execute(), timeout=timeout)
@@ -138,6 +183,11 @@ class AsyncGraphExecutor:
         except asyncio.TimeoutError:
             state.status = "failed"
             state.error = f"Execution timed out after {timeout}s"
+            for ns in node_states.values():
+                if ns.status == "running":
+                    ns.status = "failed"
+                    ns.error = "Node was running when execution timed out"
+                    ns.finished_at = time.time()
         except Exception as exc:
             state.status = "failed"
             state.error = str(exc)

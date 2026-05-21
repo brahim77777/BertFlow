@@ -35,7 +35,7 @@ class DocumentProcessor:
             return {
                 "text": "",
                 "filename": "",
-                "metadata": {"filename": "", "size": 0, "error": "No file provided"},
+                "metadata": {"filename": "", "size": 0},
             }
 
         candidates = [
@@ -51,27 +51,16 @@ class DocumentProcessor:
                 break
 
         if resolved is None:
-            return {
-                "text": "",
-                "filename": file_path,
-                "metadata": {"filename": file_path, "size": 0, "error": "File not found"},
-            }
+            raise FileNotFoundError(f"File not found: {file_path}")
 
-        try:
-            with open(resolved, encoding="utf-8", errors="replace") as f:
-                text = f.read()
-            return {
-                "text": text,
+        with open(resolved, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+
+        return {
+            "text": text,
+            "filename": os.path.basename(file_path),
+            "metadata": {
                 "filename": os.path.basename(file_path),
-                "metadata": {
-                    "filename": os.path.basename(file_path),
-                    "size": len(text),
-                    "error": None,
-                },
-            }
-        except Exception as e:
-            return {
-                "text": "",
-                "filename": file_path,
-                "metadata": {"filename": file_path, "size": 0, "error": str(e)},
-            }
+                "size": len(text),
+            },
+        }

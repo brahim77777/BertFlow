@@ -94,7 +94,7 @@ class OutputNode:
     ui_config = {"icon": "robot", "color": "#059669", "category_order": 0}
 
     inputs = {
-        "text": {"type": "string", "required": False},
+        "text": {"type": "string", "required": True},
     }
 
     outputs = {}
