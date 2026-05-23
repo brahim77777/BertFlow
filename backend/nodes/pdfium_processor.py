@@ -20,10 +20,7 @@ class PDFiumProcessor:
     inputs = {}
 
     outputs = {
-        "pages": {"type": "array"},           # [{"text": "...", "source": "...", "page": 1}, ...]
-        "text": {"type": "string"},            # Unified string
-        "filenames": {"type": "array"},        # Unique filenames list
-        "metadata": {"type": "json"},
+        "pages": {"type": "array"},
     }
 
     args_schema = {
@@ -34,12 +31,7 @@ class PDFiumProcessor:
     async def run(args: dict, inputs: dict, context: Any) -> dict:
         raw_files = args.get("files", "")
         if not raw_files.strip():
-            return {
-                "pages": [],
-                "text": "",
-                "filenames": [],
-                "metadata": {"total_pages_extracted": 0},
-            }
+            return {"pages": []}
 
         file_targets = [f.strip() for f in raw_files.split(",") if f.strip()]
         resolved_paths = []
@@ -64,12 +56,7 @@ class PDFiumProcessor:
                 missing_files.append(file_path)
 
         if missing_files:
-            return {
-                "pages": [],
-                "text": "",
-                "filenames": file_targets,
-                "metadata": {"error": f"Could not find files: {', '.join(missing_files)}"},
-            }
+            return {"pages": []}
 
         try:
             all_pages = []
@@ -84,17 +71,6 @@ class PDFiumProcessor:
                         "page": page_idx,
                     })
 
-            unified_text = "\n\n--- Page Break ---\n\n".join(p["text"] for p in all_pages)
-
-            return {
-                "pages": all_pages,
-                "text": unified_text,
-                "filenames": [os.path.basename(p) for p in resolved_paths],
-                "metadata": {
-                    "total_pages_extracted": len(all_pages),
-                    "total_characters": len(unified_text),
-                    "files_processed": len(resolved_paths),
-                },
-            }
+            return {"pages": all_pages}
         except Exception as e:
             raise RuntimeError(f"Rust Bridge Execution Failure: {e}")

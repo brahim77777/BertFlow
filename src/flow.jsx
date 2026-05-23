@@ -395,6 +395,22 @@ const SavedComponentNode = memo(({ id, data }) => {
           <strong>{component.name}</strong>
           <span>{component.description}</span>
         </div>
+        {component._backendDef?.category !== "storage" && (
+          <button
+            type="button"
+            className={`switch cache-toggle nodrag nopan ${data.cacheEnabled ? "is-on" : ""}`}
+            aria-pressed={Boolean(data.cacheEnabled)}
+            onPointerDown={stopFlowInteraction}
+            onMouseDown={stopFlowInteraction}
+            onClick={(e) => {
+              stopFlowInteraction(e);
+              data.onCacheToggle?.(id);
+            }}
+            title={data.cacheEnabled ? "Caching enabled — results will be reused" : "Caching disabled — will re-execute"}
+          >
+            <span />
+          </button>
+        )}
       </header>
       <div className="generated-component-body">
         <div className="generated-port-list">
@@ -590,6 +606,16 @@ export default function Flow() {
     );
   }, []);
 
+  const toggleNodeCache = useCallback((nodeId) => {
+    setNodes((current) =>
+      current.map((node) =>
+        node.id === nodeId
+          ? { ...node, data: { ...node.data, cacheEnabled: !node.data.cacheEnabled } }
+          : node,
+      ),
+    );
+  }, []);
+
   const nodeTypes = useMemo(() => ({ savedComponent: SavedComponentNode }), []);
 
   const selected = allComponents.find((c) => c.id === selectedId);
@@ -689,6 +715,8 @@ export default function Flow() {
         data: {
           component: comp,
           onFieldChange: updateNodeField,
+          onCacheToggle: toggleNodeCache,
+          cacheEnabled: false,
           _nodeType: selected._backendRef || null,
           _portMap: makePortMap(comp),
         },
@@ -781,32 +809,26 @@ export default function Flow() {
         const nodeType =
           node.data._nodeType || toContractName(comp.name, "node");
         const args = {};
-        let cache = false;
 
         if (comp.fields) {
           comp.fields.forEach((f) => {
-            const lower = f.label.toLowerCase();
-            if (lower === "use cache" || f.id === "field-cache") {
-              cache = Boolean(f.value);
-            } else {
-              let value = f.value;
-              const schema = comp._backendDef?.args_schema;
-              if (schema) {
-                const key = Object.keys(schema).find(
-                  (k) => f.id === `field-${k}`,
-                );
-                if (key) {
-                  const t = schema[key].type;
-                  if (t === "integer" || t === "number") value = Number(value);
-                  if (t === "boolean") value = Boolean(value);
-                }
+            let value = f.value;
+            const schema = comp._backendDef?.args_schema;
+            if (schema) {
+              const key = Object.keys(schema).find(
+                (k) => f.id === `field-${k}`,
+              );
+              if (key) {
+                const t = schema[key].type;
+                if (t === "integer" || t === "number") value = Number(value);
+                if (t === "boolean") value = Boolean(value);
               }
-              args[toContractName(f.label, "arg")] = value;
             }
+            args[toContractName(f.label, "arg")] = value;
           });
         }
 
-        acc[node.id] = { node_type: nodeType, args, config: { cache } };
+        acc[node.id] = { node_type: nodeType, args, config: { cache: node.data.cacheEnabled || false } };
         return acc;
       }, {}),
       edges: currentEdges.map((edge) => {

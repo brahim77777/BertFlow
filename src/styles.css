@@ -1065,6 +1065,21 @@ button {
     object-fit: contain;
 }
 
+.cache-toggle.switch {
+    width: 32px;
+    height: 18px;
+    padding: 2px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.cache-toggle.switch span {
+    width: 12px;
+    height: 12px;
+}
+.cache-toggle.switch.is-on span {
+    transform: translateX(14px);
+}
+
 .generated-component-body {
     display: grid;
     grid-template-columns: 110px minmax(0, 1fr) 110px;
