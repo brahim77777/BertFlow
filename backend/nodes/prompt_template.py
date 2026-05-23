@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.core.errors import NodeExecutionError
 from backend.core.registry import register_node
 
 _DEFAULT_TEMPLATE = """You are a helpful assistant. Answer the user's question using ONLY the provided context.
@@ -69,6 +70,11 @@ class PromptTemplate:
         ctx_text = str(inputs.get("context", "")).strip()
         query    = str(inputs.get("query", "")).strip()
         history  = inputs.get("history", "")
+
+        if not ctx_text:
+            raise NodeExecutionError("Context input is empty. Connect a text source to this node.")
+        if not query:
+            raise NodeExecutionError("Query input is empty. Connect a text source or enter a query.")
 
         template = str(args.get("template", _DEFAULT_TEMPLATE))
         system   = str(args.get("system_instruction", "")).strip()

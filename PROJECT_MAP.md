@@ -238,7 +238,7 @@ BertFlow is a **visual Agentic RAG pipeline builder**. You drag backend-register
 - [ ] update the requirements.txt
 
 - [ ] adding reference resolve logic when getting huge file sizes -----> to verify
-
+- [ ] node LanceDB Indexer (maybe other nodes) keeps showing "running" in the Frontend/UI status while the flow has finished. 
 ## KNOWN BUGS & RESOLUTIONS
 
 ### Bug: Connecting tool nodes broke the prompt input ("Prompt input is empty")

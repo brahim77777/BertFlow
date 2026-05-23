@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from backend.core.errors import NodeExecutionError
 from backend.core.registry import register_node
 # Import the thin wrapper that exposes rag_rust functionalities
 import backend.infrastructure.rust_bridge as rust_bridge 
@@ -35,15 +36,9 @@ class PDFiumProcessor:
     @staticmethod
     async def run(args: dict, inputs: dict, context: Any) -> dict:
         raw_files = args.get("files", "")
+        print()
         if not raw_files.strip():
-            return {
-                "pages": [],
-                "page_sources": [],
-                "page_numbers": [],
-                "text": "",
-                "filenames": [],
-                "metadata": {"error": "No file configurations provided"},
-            }
+            raise NodeExecutionError("No file selected. Configure a PDF file in the node settings.")
 
         # Process a single item or an array/comma-separated cluster of target documents
         file_targets = [f.strip() for f in raw_files.split(",") if f.strip()]
@@ -69,14 +64,7 @@ class PDFiumProcessor:
                 missing_files.append(file_path)
 
         if missing_files:
-            return {
-                "pages": [],
-                "page_sources": [],
-                "page_numbers": [],
-                "text": "",
-                "filenames": file_targets,
-                "metadata": {"error": f"Could not find files: {', '.join(missing_files)}"},
-            }
+            raise NodeExecutionError(f"Could not find files: {', '.join(missing_files)}")
 
         try:
             # Process each file individually to track per-page source and page number.

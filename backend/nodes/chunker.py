@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.core.errors import NodeExecutionError
 from backend.core.registry import register_node
 import backend.infrastructure.rust_bridge as rust_bridge
 
@@ -113,15 +114,9 @@ class SemanticChunker:
         text = inputs.get("text", "")
         if isinstance(text, list):
             text = text[0] if text else ""
-
+        print("Text from chunker: ",text)
         if not text or not str(text).strip():
-            return {
-                "chunks": [],
-                "sources": [],
-                "pages": [],
-                "text": "",
-                "metadata": {"error": "No input text provided"},
-            }
+            raise NodeExecutionError("No input text or pages provided. Connect a text source or PDF output.")
 
         try:
             chunks = rust_bridge.semantic_window_chunker_advanced(

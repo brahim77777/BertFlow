@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from backend.core.errors import NodeExecutionError
 from backend.core.registry import register_node
 
 
@@ -47,7 +48,7 @@ class ArrayParser:
         sep = str(args.get("separator", "\n---\n")).replace("\\n", "\n")
 
         if not data:
-            return {"text": "(empty)"}
+            raise NodeExecutionError("No data provided. Connect an array input to this node.")
 
         if fmt == "json":
             return {"text": json.dumps(data, indent=2, default=str, ensure_ascii=False)}

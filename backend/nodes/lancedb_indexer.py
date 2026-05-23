@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, List
 
 import backend.infrastructure.rust_bridge as rust_bridge
+from backend.core.errors import NodeExecutionError
 from backend.core.registry import register_node
 
 # Default DB directory relative to the project root
@@ -118,88 +119,87 @@ class LanceDBStore:
         query = str(inputs.get("query", "") or "").strip()
         chunks = _coerce_chunks(raw_chunks)
 
-        try:
-            rust_bridge.load_embed_model(use_zembed=use_zembed)
+        if not chunks and not query:
+            raise NodeExecutionError("No chunks or query provided. Connect chunks to index or a query to search.")
 
-            # ── Phase 1: Index (if chunks are provided) ──────────────
-            if chunks:
-                n = len(chunks)
-                sources = _coerce_sources(inputs.get("sources", []), n)
-                pages = _coerce_pages(inputs.get("pages", []), n)
+        rust_bridge.load_embed_model(use_zembed=use_zembed)
 
-                if use_zembed:
-                    embeddings = rust_bridge.embed_texts_zembed(chunks, batch_size)
-                else:
-                    embeddings = rust_bridge.embed_texts_local(chunks, batch_size)
-
-                if len(embeddings) != n:
-                    raise ValueError(f"Embedding count mismatch: expected {n}, got {len(embeddings)}")
-
-                rust_bridge.lancedb_create_or_open(
-                    db_dir=db_dir,
-                    table_name=table_name,
-                    texts=chunks,
-                    sources=sources,
-                    pages=pages,
-                    embeddings=embeddings,
-                    rebuild=rebuild,
-                )
-
-            # ── Phase 2: Search (if query is provided) ───────────────
-            if not query:
-                # Index-only mode — return confirmation
-                msg = f"Indexed {len(chunks)} chunks into '{table_name}'" if chunks else "No chunks or query provided"
-                return {"results": [], "contexts": msg}
+        # ── Phase 1: Index (if chunks are provided) ──────────────
+        if chunks:
+            n = len(chunks)
+            sources = _coerce_sources(inputs.get("sources", []), n)
+            pages = _coerce_pages(inputs.get("pages", []), n)
 
             if use_zembed:
-                q_vecs = rust_bridge.embed_texts_zembed([query], 1)
+                embeddings = rust_bridge.embed_texts_zembed(chunks, batch_size)
             else:
-                q_vecs = rust_bridge.embed_texts_local([query], 1)
+                embeddings = rust_bridge.embed_texts_local(chunks, batch_size)
 
-            if not q_vecs:
-                raise ValueError("Failed to embed query")
+            if len(embeddings) != n:
+                raise ValueError(f"Embedding count mismatch: expected {n}, got {len(embeddings)}")
 
-            raw_results = rust_bridge.lancedb_search(
+            rust_bridge.lancedb_create_or_open(
                 db_dir=db_dir,
                 table_name=table_name,
-                query_vector=q_vecs[0],
-                top_k=top_k,
+                texts=chunks,
+                sources=sources,
+                pages=pages,
+                embeddings=embeddings,
+                rebuild=rebuild,
             )
 
-            # ── Format results ───────────────────────────────────────
-            # Rust lancedb_search returns Vec<(text, source, page, distance)>
-            results: List[dict] = []
-            context_parts: List[str] = []
+        # ── Phase 2: Search (if query is provided) ───────────────
+        if not query:
+            # Index-only mode — return confirmation
+            msg = f"Indexed {len(chunks)} chunks into '{table_name}'" if chunks else "No chunks or query provided"
+            return {"results": [], "contexts": msg}
 
-            for i, row in enumerate(raw_results or []):
-                if isinstance(row, (tuple, list)) and len(row) >= 4:
-                    # Rust returns (text, source, page, distance)
-                    entry = {
-                        "rank": i + 1,
-                        "text": str(row[0]),
-                        "source": str(row[1]),
-                        "page": int(row[2]),
-                        "distance": float(row[3]),
-                    }
-                elif isinstance(row, dict):
-                    entry = {
-                        "rank": i + 1,
-                        "text": row.get("text", ""),
-                        "source": row.get("source", "unknown"),
-                        "page": row.get("page", 0),
-                        "distance": row.get("_distance", None),
-                    }
-                else:
-                    entry = {"rank": i + 1, "text": str(row), "source": "unknown", "page": 0, "distance": None}
+        if use_zembed:
+            q_vecs = rust_bridge.embed_texts_zembed([query], 1)
+        else:
+            q_vecs = rust_bridge.embed_texts_local([query], 1)
 
-                results.append(entry)
-                context_parts.append(
-                    f"[{entry['rank']}] (source: {entry['source']}, p.{entry['page']})\n{entry['text']}"
-                )
+        if not q_vecs:
+            raise ValueError("Failed to embed query")
 
-            contexts = "\n\n---\n\n".join(context_parts) if context_parts else "(no results found)"
+        raw_results = rust_bridge.lancedb_search(
+            db_dir=db_dir,
+            table_name=table_name,
+            query_vector=q_vecs[0],
+            top_k=top_k,
+        )
 
-            return {"results": results, "contexts": contexts}
+        # ── Format results ───────────────────────────────────────
+        # Rust lancedb_search returns Vec<(text, source, page, distance)>
+        results: List[dict] = []
+        context_parts: List[str] = []
 
-        except Exception as exc:
-            return {"results": [], "contexts": f"Error: {exc}"}
+        for i, row in enumerate(raw_results or []):
+            if isinstance(row, (tuple, list)) and len(row) >= 4:
+                # Rust returns (text, source, page, distance)
+                entry = {
+                    "rank": i + 1,
+                    "text": str(row[0]),
+                    "source": str(row[1]),
+                    "page": int(row[2]),
+                    "distance": float(row[3]),
+                }
+            elif isinstance(row, dict):
+                entry = {
+                    "rank": i + 1,
+                    "text": row.get("text", ""),
+                    "source": row.get("source", "unknown"),
+                    "page": row.get("page", 0),
+                    "distance": row.get("_distance", None),
+                }
+            else:
+                entry = {"rank": i + 1, "text": str(row), "source": "unknown", "page": 0, "distance": None}
+
+            results.append(entry)
+            context_parts.append(
+                f"[{entry['rank']}] (source: {entry['source']}, p.{entry['page']})\n{entry['text']}"
+            )
+
+        contexts = "\n\n---\n\n".join(context_parts) if context_parts else "(no results found)"
+
+        return {"results": results, "contexts": contexts}
