@@ -5,45 +5,38 @@ from pathlib import Path
 from typing import Any, List
 
 import backend.infrastructure.rust_bridge as rust_bridge
-from backend.core.errors import NodeExecutionError
 from backend.core.registry import register_node
 
 # Default DB directory relative to the project root
 _DEFAULT_DB_DIR = str(Path(__file__).resolve().parents[2] / "lancedb_store")
 
 
-def _coerce_chunks(raw) -> List[str]:
-    """Accept a list of strings, a single string, or a JSON-encoded list."""
+def _parse_chunks(raw) -> list[tuple[str, str, int]]:
     if isinstance(raw, list):
-        return [str(c) for c in raw if c]
+        result = []
+        for i, item in enumerate(raw):
+            if isinstance(item, dict):
+                text = str(item.get("text", ""))
+                source = str(item.get("source", "unknown"))
+                page = int(item.get("page", i + 1))
+            else:
+                text = str(item)
+                source = "unknown"
+                page = i + 1
+            if text.strip():
+                result.append((text, source, page))
+        return result
     if isinstance(raw, str):
         import json
-
         try:
             parsed = json.loads(raw)
             if isinstance(parsed, list):
-                return [str(c) for c in parsed if c]
+                return _parse_chunks(parsed)
         except (json.JSONDecodeError, ValueError):
             pass
-        return [raw] if raw.strip() else []
+        text = raw.strip()
+        return [(text, "unknown", 1)] if text else []
     return []
-
-
-def _coerce_sources(raw, n: int) -> List[str]:
-    if isinstance(raw, list) and len(raw) >= n:
-        return [str(s) for s in raw[:n]]
-    if isinstance(raw, str) and raw.strip():
-        return [raw] * n
-    return ["unknown"] * n
-
-
-def _coerce_pages(raw, n: int) -> List[int]:
-    if isinstance(raw, list) and len(raw) >= n:
-        try:
-            return [int(p) for p in raw[:n]]
-        except (TypeError, ValueError):
-            pass
-    return list(range(1, n + 1))
 
 
 @register_node
@@ -60,8 +53,6 @@ class LanceDBStore:
 
     inputs = {
         "chunks": {"type": "array", "required": False},
-        "sources": {"type": "array", "required": False},
-        "pages": {"type": "array", "required": False},
         "query": {"type": "string", "required": False},
     }
 
@@ -117,18 +108,16 @@ class LanceDBStore:
 
         raw_chunks = inputs.get("chunks", [])
         query = str(inputs.get("query", "") or "").strip()
-        chunks = _coerce_chunks(raw_chunks)
-
-        if not chunks and not query:
-            raise NodeExecutionError("No chunks or query provided. Connect chunks to index or a query to search.")
+        parsed = _parse_chunks(raw_chunks)
 
         rust_bridge.load_embed_model(use_zembed=use_zembed)
 
         # ── Phase 1: Index (if chunks are provided) ──────────────
-        if chunks:
-            n = len(chunks)
-            sources = _coerce_sources(inputs.get("sources", []), n)
-            pages = _coerce_pages(inputs.get("pages", []), n)
+        if parsed:
+            n = len(parsed)
+            chunks = [p[0] for p in parsed]
+            sources = [p[1] for p in parsed]
+            pages = [p[2] for p in parsed]
 
             if use_zembed:
                 embeddings = rust_bridge.embed_texts_zembed(chunks, batch_size)
@@ -151,7 +140,7 @@ class LanceDBStore:
         # ── Phase 2: Search (if query is provided) ───────────────
         if not query:
             # Index-only mode — return confirmation
-            msg = f"Indexed {len(chunks)} chunks into '{table_name}'" if chunks else "No chunks or query provided"
+            msg = f"Indexed {len(parsed)} chunks into '{table_name}'" if parsed else "No chunks or query provided"
             return {"results": [], "contexts": msg}
 
         if use_zembed:

@@ -89,10 +89,7 @@ class PromptTemplate:
                 history_block=history_block,
             )
         except KeyError as exc:
-            rendered = (
-                f"Template error: unknown placeholder {exc}\n\n"
-                f"Context:\n{ctx_text}\n\nQuery:\n{query}"
-            )
+            raise ValueError(f"Template error: unknown placeholder {exc}")
 
         # Prepend system instruction if provided
         if system:

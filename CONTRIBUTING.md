@@ -3,6 +3,21 @@
 > **Two contributors:** Brahim (Linux) and Windows collaborator.  
 > Read this before touching anything related to the Rust extension, the Python venv, or the backend.
 
+
+
+### notes: for how the SKIPPED status is handling propagating errors:
+Here's what the logic does now, and why each decision is sound:
+The skip_queue drains transitively. After each wave, any node that just became "failed" (under skip mode) is seeded into skip_queue. Then we drain it in a loop — a node marked "skipped" is itself pushed back into the queue as a skip source, so the skip signal cascades through the whole downstream subtree without needing an extra wave.
+required is the single decision point. For each downstream edge from a failed/skipped node:
+
+required=True → the target is marked "skipped" immediately, error message tells you exactly which upstream caused it and whether it failed or was skipped. pending is decremented so the outer loop can terminate cleanly.
+required=False → in_deg is decremented, nothing is injected into node_inputs, and if all other deps are satisfied the node runs normally with its own default for that port.
+
+in_deg is always decremented regardless of required. This is important — it's an edge being resolved either way, just without a value. Skipping the decrement would leave the node stranded at "pending" again.
+The final status vocabulary you end up with is unambiguous: completed, failed, skipped, running (only transiently), pending (only transiently). Every terminal state has a clear cause.
+
+
+
 ---
 
 ## Table of Contents

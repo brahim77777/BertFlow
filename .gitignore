@@ -50,6 +50,7 @@ Thumbs.db
 .parcel-cache/
 
 # ── Misc project-specific ─────────────────────────────────────────────────────
+notes.md
 backend/app
 time
 *.tmp
