@@ -61,16 +61,44 @@ class InMemoryResultStore:
         return outputs
 
 
-class InMemoryExecutionCache:
-    def __init__(self) -> None:
-        self._cache: dict[str, dict[str, Any]] = {}
+class PersistentExecutionCache:
+    """Disk-backed LRU cache using diskcache.SQLite.
+
+    Drop-in replacement for the old ``InMemoryExecutionCache``.
+    Persists across server restarts, auto-evicts oldest entries when
+    ``CACHE_SIZE_LIMIT`` is exceeded, and respects an optional
+    per-entry TTL (default: no expiry).
+
+    The cache directory lives under the project root at ``.bertflow-cache/``.
+    """
+
+    CACHE_DIR = ".bertflow-cache"
+    CACHE_SIZE_LIMIT = 2_000_000_000  # 2 GiB
+
+    def __init__(self, directory: str | None = None) -> None:
+        import diskcache
+
+        self._cache = diskcache.Cache(
+            directory or self.CACHE_DIR,
+            size_limit=self.CACHE_SIZE_LIMIT,
+        )
 
     def _key(self, node_type: str, args: dict, inputs: dict) -> str:
         raw = json.dumps([node_type, args, inputs], sort_keys=True, default=str)
         return hashlib.sha256(raw.encode()).hexdigest()
 
-    def get(self, node_type: str, args: dict, inputs: dict) -> dict | None:
-        return self._cache.get(self._key(node_type, args, inputs))
+    def get(self, node_type: str, args: dict, inputs: dict, expire: float | None = None) -> dict | None:
+        key = self._key(node_type, args, inputs)
+        val = self._cache.get(key)
+        if val is not None and expire is not None:
+            import time
+            if time.time() - self._cache._Cache__expire.get(key, 0) > expire:
+                del self._cache[key]
+                return None
+        return val
 
     def put(self, node_type: str, args: dict, inputs: dict, outputs: dict) -> None:
         self._cache[self._key(node_type, args, inputs)] = outputs
+
+# Backward-compatible alias — swap your import and you are done.
+InMemoryExecutionCache = PersistentExecutionCache

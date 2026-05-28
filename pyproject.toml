@@ -5,6 +5,7 @@ requires-python = ">=3.13,<3.14"   # rag_rust.so is compiled for CPython 3.13
 dependencies = [
     "websockets>=16.0,<17.0",
     "httpx",
+    "diskcache>=5.6.1",
 ]
 
 [tool.ruff]

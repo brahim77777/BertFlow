@@ -156,7 +156,7 @@ cd bertflow
 uv venv backend/backend-env --python 3.13
 
 # 3. Install Python deps into it
-uv pip install --python backend/backend-env websockets httpx
+uv pip install --python backend/backend-env websockets httpx diskcache
 
 # 4. Install rag_rust into the venv
 #    The pre-built wheel is checked in under backend/backend-env — you need to
@@ -297,6 +297,7 @@ __pycache__/
 Thumbs.db
 
 # Data / outputs
+.bertflow-cache/
 lancedb_store/
 files/
 graphify-out/
@@ -323,6 +324,25 @@ graphify-out/
 ---
 
 ## 6. What Changed (May 2026)
+
+### Cache now persists to disk (diskcache)
+
+The old `InMemoryExecutionCache` (plain dict, lost on every restart) was replaced with `PersistentExecutionCache` backed by `diskcache` (SQLite + LRU eviction, 2 GiB limit). The cache directory `.bertflow-cache/` lives in the project root and is auto-created on first use.
+
+- **Drop-in replacement** — same `get()`/`put()` interface
+- **Survives restarts** — cached results persist across server reboots
+- **Auto-eviction** — oldest entries are removed when the 2 GiB limit is hit
+- **New dependency** — `diskcache>=5.6.1` (added to `pyproject.toml` and `requirements.txt`)
+- **`.gitignore` updated** — `.bertflow-cache/` added so runtime cache dir isn't tracked
+
+Install the new dependency:
+```bash
+uv pip install --python backend/backend-env diskcache
+# or:
+source backend/backend-env/bin/activate && pip install diskcache
+```
+
+### Problem: backend crashed immediately on "Fetch from Backend"
 
 ### Problem: backend crashed immediately on "Fetch from Backend"
 

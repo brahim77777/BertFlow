@@ -10,7 +10,7 @@ from backend.core.errors import NodeExecutionError
 from backend.core.logging import logger
 from backend.core.models import ExecutionState, NodeState, RunRequest
 from backend.core.registry import NodeRegistry
-from backend.core.result_store import InMemoryExecutionCache, InMemoryResultStore
+from backend.core.result_store import InMemoryResultStore, PersistentExecutionCache
 
 
 class AsyncGraphExecutor:
@@ -18,11 +18,11 @@ class AsyncGraphExecutor:
         self,
         registry: NodeRegistry,
         store: InMemoryResultStore | None = None,
-        cache: InMemoryExecutionCache | None = None,
+        cache: PersistentExecutionCache | None = None,
     ) -> None:
         self._registry = registry
         self._store = store or InMemoryResultStore()
-        self._cache = cache or InMemoryExecutionCache()
+        self._cache = cache or PersistentExecutionCache()
 
     async def execute(
         self,
@@ -83,8 +83,14 @@ class AsyncGraphExecutor:
                 for nid in wave:
                     tasks.append(
                         self._run_node(
-                            request, nid, node_states, node_inputs,
-                            output_map, max_retries, on_node_status, on_node_output,
+                            request,
+                            nid,
+                            node_states,
+                            node_inputs,
+                            output_map,
+                            max_retries,
+                            on_node_status,
+                            on_node_output,
                         )
                     )
 
@@ -247,7 +253,11 @@ class AsyncGraphExecutor:
                 node_states[nid].cached = True
                 node_states[nid].finished_at = time.time()
                 if on_node_status:
-                    dur = round(node_states[nid].finished_at - node_states[nid].started_at, 3) if node_states[nid].finished_at and node_states[nid].started_at else None
+                    dur = (
+                        round(node_states[nid].finished_at - node_states[nid].started_at, 3)
+                        if node_states[nid].finished_at and node_states[nid].started_at
+                        else None
+                    )
                     await on_node_status(nid, "completed", None, dur)
                 logger.info("Cache hit for node %s (%s)", nid, node.node_type)
                 return cached
@@ -257,10 +267,10 @@ class AsyncGraphExecutor:
             try:
                 outputs = await reg.run(args, inputs, ctx, emit)
                 node_states[nid].finished_at = time.time()
-                if node.config.cache:
-                    self._cache.put(node.node_type, args, inputs, outputs)
-                for port, chunks in stream_buf.items():
+                for port, chunks in stream_buf.items():  # merge first
                     outputs.setdefault(port, "".join(chunks))
+                if node.config.cache:
+                    self._cache.put(node.node_type, args, inputs, outputs)  # then cache the complete result
                 logger.info("Node %s (%s) completed", nid, node.node_type)
                 return outputs
             except Exception as exc:

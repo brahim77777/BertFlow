@@ -10,11 +10,11 @@ from backend.core.executor import AsyncGraphExecutor
 from backend.core.logging import logger
 from backend.core.models import RunRequest
 from backend.core.registry import NodeRegistry
-from backend.core.result_store import InMemoryExecutionCache, InMemoryResultStore
+from backend.core.result_store import InMemoryResultStore, PersistentExecutionCache
 from backend.core.validator import validate_run_request
 
 _shared_store = InMemoryResultStore()
-_shared_cache = InMemoryExecutionCache()
+_shared_cache = PersistentExecutionCache()
 
 
 def build_registry() -> NodeRegistry:

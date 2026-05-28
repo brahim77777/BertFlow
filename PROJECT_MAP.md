@@ -6,6 +6,7 @@
 |-------|-----------|---------|
 | Backend | Python + asyncio | **3.13.x** (CPython — required by `rag_rust.so`) |
 | WebSocket | websockets | 16.0 |
+| Cache | diskcache | 5.6.x |
 | Frontend (React) | React + Vite + @xyflow/react | 18.x / 7.x / 12.x |
 | Runtime | Bun | 1.3.13 |
 | Linter | ruff | 0.15.x |
@@ -46,7 +47,7 @@ backend/
 │   ├── registry.py           # NodeRegistry, @register_node decorator, auto-discovery
 │   ├── validator.py          # 6-stage validation → GraphPlan
 │   ├── executor.py           # AsyncGraphExecutor, Kahn's algorithm, wave-based parallel execution
-│   ├── result_store.py       # InMemoryResultStore, InMemoryExecutionCache (SHA-256)
+│   ├── result_store.py       # InMemoryResultStore, PersistentExecutionCache (SHA-256, diskcache)
 │   └── logging.py            # bertflow logger
 └── nodes/
     ├── __init__.py
@@ -197,7 +198,7 @@ BertFlow is a **visual Agentic RAG pipeline builder**. You drag backend-register
 | Calculator tool node (extension) | ✅ Working |
 | Web search tool (SerpAPI, extension) | ✅ Working |
 | Shared result store across connections | ✅ Working |
-| SHA-256 node output cache | ✅ Working |
+| Persistent node output cache (diskcache) | ✅ Working |
 | File upload → `files/` folder | ✅ Working |
 
 ### May 2026 — Critical bug fixed
@@ -224,6 +225,7 @@ BertFlow is a **visual Agentic RAG pipeline builder**. You drag backend-register
 - [x] **Frontend type coercion for args** — `flow.jsx:675-693`: field values are now coerced to their backend-declared types (`integer`/`number` → `Number()`, `boolean` → `Boolean()`) before sending in the run payload. Prevents 400 errors from APIs that reject string-typed numbers.
 - [x] **Inline streaming preview in nodes** — `flow.jsx:343-352` + `styles.css`: live preview area appears directly in the node body during streaming (no click needed). Shows full text with scroll, purple pulsing border on the node. Removed `previewLines()` truncation from the inline preview.
 - [x] **OpenRouter node: sync → async HTTP** — `openrouter.py`: replaced `requests` + `asyncio.to_thread` with `httpx.AsyncClient.stream()`. The `emit` callback was silently failing because it was called from a blocking thread where coroutines were never awaited. Now everything runs in the event loop and `await emit()` actually sends WS messages. Added `httpx` dependency.
+- [x] **In-memory cache → persistent diskcache** — `result_store.py`: replaced `InMemoryExecutionCache` (plain dict, lost on restart) with `PersistentExecutionCache` backed by `diskcache` (SQLite, LRU eviction, 2 GiB limit, survives restarts). Same `get()`/`put()` interface — drop-in replacement. Added `diskcache` dependency.
 
 ## ORPHANS & PENDING
 
@@ -239,7 +241,13 @@ BertFlow is a **visual Agentic RAG pipeline builder**. You drag backend-register
 
 - [ ] adding reference resolve logic when getting huge file sizes -----> to verify
 - [ ] node LanceDB Indexer (maybe other nodes) keeps showing "running" in the Frontend/UI status while the flow has finished. 
+
+- [ ] Fixing Preview in UploadPDF ( broke after cleaning ports ) 
+- [ ] Adding Error Preview
+- [ ] PDFUim component in backend/nodes/ output's preview is very buggy ---> needs fixes
+- [ ] TODO !! : add a "Froce Stop Run" button ,goal --> verify caching of semantic chunker on large pdf's caching bug ( caches the prcessed chunked and not waites until all chunkes get processed , this is a hypothesis i need to verify )
 ## KNOWN BUGS & RESOLUTIONS
+
 
 ### Bug: Connecting tool nodes broke the prompt input ("Prompt input is empty")
 
@@ -273,3 +281,49 @@ Even when mode detection worked correctly for server-fetched components, the two
 **Cause:** The `rag_rust.so` recompiled from `rag_rust_src/` had a fatal initialization bug. The moment Python executed `import rag_rust` the process died — no traceback, no error message, just exit 139.
 
 **Fix:** Replaced the broken `.so` with the stable build from `Agentic-RAG-Rust-Core-PFE-26/rustvenv/`. Both share the same PyO3 0.28.3 + Python 3.13 ABI and identical API surface.
+
+
+
+
+
+# Flow.jsx ( Frontend )
+
+Here's how flow.jsx (1078 lines) works — it's the pipeline execution canvas (toggled via the Builder/Flow switch in main.jsx):
+Architecture
+Two app modes live in src/main.jsx:
+- <App /> (Builder mode) — the component builder you want skipped
+- <Flow /> (from flow.jsx) — the pipeline flow runner
+flow.jsx — Core Flow
+Everything orbits the Flow() component (line 563), which is the default export. It manages four pieces of state:
+1. Component Registry (allComponents)
+- Loaded from localStorage on mount (loadSavedComponents, line 28)
+- Can be supplemented by WebSocket from the Python backend (fetchFromBackend, line 638 → mergeBackendComponents, line 623)
+- Backend nodes are converted via backendTypeToComponent() (line 50), which maps backend arg schemas → fields, ports → input/output handles
+2. Flow Canvas State (nodes, edges + refs)
+- Uses React Flow (@xyflow/react) — nodes are rendered by SavedComponentNode (line 350)
+- Each node has: fields (configurable inputs like text/number/toggle), inputs/outputs (typed connection ports)
+- Edges get type compatibility checks (arePortTypesCompatible, line 119) before connecting
+- Supports extensions (graph modification edges via mode: "extension") vs normal data edges
+3. The Toolbar (FlowToolbar, line 502)
+- Dropdown to pick a saved/backend component
+- "Fetch from Backend" (WebSocket handshake for node_types)
+- "Add" to place the selected component onto the canvas
+- "Run Flow" button to execute the pipeline
+4. Execution Engine (runFlow, line 785)
+- Serializes all nodes + edges into a JSON payload
+- Opens a WebSocket to the backend (ws://127.0.0.1:8765)
+- Streams real-time status: node_status → updates badge, stream_chunk → appends streaming output in-place
+- On completion, resolves store:// refs via a second resolve_refs call
+- The node status lifecycle: pending → running/streaming → completed
+Node Rendering (SavedComponentNode, line 350)
+- Header with icon (from src/assets/icons/), name, cache toggle
+- Body: input handles (left) → field list (middle) → output handles (right)
+- Fields render with FlowFieldInput (line 145) — supports text, number, toggle, select, textarea, file upload
+- Prompt template fields (nodeType === "prompt_template") get an ExpandableFieldInput modal with {context}, {query}, {history_block} placeholders
+- Completed nodes show a "Preview" button with an output modal (previewLines, line 338)
+Key Design Patterns
+- useRef mirrors of nodes/edges (nodesRef/edgesRef) to avoid stale closures in callbacks
+- stopFlowInteraction (event.stopPropagation()) on every control to prevent React Flow from treating field clicks as drag actions
+- makeId uses crypto.randomUUID() for collision-free IDs
+- cloneComponent uses structuredClone with JSON.parse/stringify fallback
+- Persistence: components saved to localStorage under bertlike.component-builder.components
