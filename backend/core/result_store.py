@@ -4,6 +4,8 @@ import hashlib
 import json
 from typing import Any
 
+from backend.core.logging import logger
+
 HYBRID_THRESHOLD = 1024
 
 
@@ -98,7 +100,17 @@ class PersistentExecutionCache:
         return val
 
     def put(self, node_type: str, args: dict, inputs: dict, outputs: dict) -> None:
-        self._cache[self._key(node_type, args, inputs)] = outputs
+        try:
+            self._cache[self._key(node_type, args, inputs)] = outputs
+        except Exception as exc:
+            # Some node outputs aren't serializable — e.g. tool nodes return a dict
+            # containing a live `execute` closure. Skip caching rather than letting
+            # a pickling failure crash the whole run.
+            logger.warning(
+                "Skipping cache for node type '%s': result not serializable (%s)",
+                node_type,
+                exc,
+            )
 
 # Backward-compatible alias — swap your import and you are done.
 InMemoryExecutionCache = PersistentExecutionCache

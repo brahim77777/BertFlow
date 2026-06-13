@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import Callable
@@ -9,6 +10,36 @@ import httpx
 
 from backend.core.errors import NodeExecutionError
 from backend.core.registry import register_node
+
+# Human-readable summary per HTTP status, so users don't see raw httpx noise.
+_HTTP_REASONS = {
+    400: "Bad request",
+    401: "Invalid or missing API key",
+    402: "Insufficient credits",
+    403: "Access forbidden",
+    404: "Model not found",
+    408: "Request timed out",
+    429: "Rate limit exceeded",
+    500: "OpenRouter server error",
+    502: "OpenRouter is unavailable",
+    503: "OpenRouter is unavailable",
+}
+
+
+def _format_openrouter_error(status: int, body: bytes) -> str:
+    """Turn an OpenRouter error response into a short, user-friendly message."""
+    detail = ""
+    try:
+        data = json.loads(body)
+        err = data.get("error")
+        if isinstance(err, dict):
+            detail = err.get("message", "")
+        detail = detail or data.get("message", "")
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        detail = body.decode(errors="replace").strip()
+    detail = " ".join(detail.split())[:300]
+    reason = _HTTP_REASONS.get(status, f"HTTP {status}")
+    return f"{reason} ({status}){f' — {detail}' if detail else ''}"
 
 
 @register_node
@@ -85,7 +116,11 @@ class OpenRouterLLM:
                     },
                     json=body,
                 ) as resp:
-                    resp.raise_for_status()
+                    if resp.status_code >= 400:
+                        error_body = await resp.aread()
+                        raise NodeExecutionError(
+                            _format_openrouter_error(resp.status_code, error_body)
+                        )
                     content_buf: list[str] = []
                     tool_calls_raw: list[dict] = []
 
@@ -119,11 +154,23 @@ class OpenRouterLLM:
                         except json.JSONDecodeError:
                             continue
 
+                # Record this turn as a single assistant message carrying both the
+                # streamed content and any tool calls — the OpenAI/OpenRouter API
+                # expects them together in one turn, not as two separate assistant
+                # messages.
+                assistant_msg: dict[str, Any] = {"role": "assistant"}
                 if content_buf:
-                    messages.append({"role": "assistant", "content": "".join(content_buf)})
+                    assistant_msg["content"] = "".join(content_buf)
+                if tool_calls_raw:
+                    assistant_msg["tool_calls"] = tool_calls_raw
 
                 if not tool_calls_raw:
+                    # No tools requested — this is the final answer.
+                    if content_buf:
+                        messages.append(assistant_msg)
                     break
+
+                messages.append(assistant_msg)
 
                 tool_results = []
                 for tc in tool_calls_raw:
@@ -133,7 +180,9 @@ class OpenRouterLLM:
                     tool_args = json.loads(args_str) if args_str else {}
                     tool = tool_map.get(name)
                     if tool and "execute" in tool:
-                        result = tool["execute"](tool_args)
+                        # execute() may perform blocking I/O (e.g. web search); run it
+                        # off the event loop so other nodes keep progressing in parallel.
+                        result = await asyncio.to_thread(tool["execute"], tool_args)
                         if isinstance(result, str):
                             await emit("response", f"\n[tool:{name}] {result[:200]}")
                         tool_results.append(
@@ -154,8 +203,6 @@ class OpenRouterLLM:
                             }
                         )
 
-                messages.append({"role": "assistant", "tool_calls": tool_calls_raw})
                 messages.extend(tool_results)
-                content_buf = []
 
         return {"response": "".join(full)}

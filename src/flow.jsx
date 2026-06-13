@@ -129,6 +129,43 @@ function arePortTypesCompatible(sourceType, targetType) {
   );
 }
 
+// ── Port type → color ────────────────────────────────────────────
+// Single source of truth for the color used by a port's type badge and its
+// connection handle. To support new types later, add an entry here (keyed by
+// the *normalized* type from normalizePortType); anything unknown falls back to
+// PORT_TYPE_DEFAULT_COLOR, so the UI degrades gracefully as the type system grows.
+const PORT_TYPE_COLORS = {
+  string: "#38bdf8", // sky
+  int: "#34d399", // emerald
+  number: "#34d399",
+  float: "#34d399",
+  boolean: "#f472b6", // pink
+  array: "#fbbf24", // amber
+  object: "#a78bfa", // violet
+  json: "#c084fc", // light violet
+  any: "#94a3b8", // slate
+};
+const PORT_TYPE_DEFAULT_COLOR = "#94a3b8";
+const EXTENSION_PORT_COLOR = "#f59e0b";
+
+function portColor(port) {
+  if (port?.mode === "extension") return EXTENSION_PORT_COLOR;
+  return PORT_TYPE_COLORS[normalizePortType(port?.type)] || PORT_TYPE_DEFAULT_COLOR;
+}
+
+// Distinct types present across the loaded components — drives the canvas legend.
+function collectPortTypes(components) {
+  const seen = new Map();
+  for (const c of components || []) {
+    for (const p of [...(c.inputs || []), ...(c.outputs || [])]) {
+      if (p.mode === "extension") continue;
+      const t = normalizePortType(p.type);
+      if (!seen.has(t)) seen.set(t, PORT_TYPE_COLORS[t] || PORT_TYPE_DEFAULT_COLOR);
+    }
+  }
+  return [...seen.entries()];
+}
+
 function summarizeMessage(message) {
   if (message.type === "node_types")
     return `Backend ready: ${message.node_types?.length || 0} node types`;
@@ -255,6 +292,15 @@ const ExpandableFieldInput = memo(({ field, onChange }) => {
     setOpen(false);
   };
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   return (
     <>
       <button
@@ -263,19 +309,26 @@ const ExpandableFieldInput = memo(({ field, onChange }) => {
         onPointerDown={stopFlowInteraction}
         onMouseDown={stopFlowInteraction}
         onClick={openModal}
+        aria-label={`Edit ${field.label}`}
         title="Click to expand editor"
       >
         {(field.value || "").slice(0, 60) || "Click to edit template…"}
-        <span className="expand-icon">⤢</span>
+        <span className="expand-icon" aria-hidden="true">⤢</span>
       </button>
       {open && (
-        <div className="template-modal-backdrop" onClick={() => setOpen(false)}>
+        <div
+          className="template-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Edit ${field.label}`}
+          onClick={() => setOpen(false)}
+        >
           <div className="template-modal-panel" onClick={(e) => e.stopPropagation()}>
             <header className="template-modal-header">
               <strong>{field.label}</strong>
               <div className="template-modal-actions">
                 <button className="template-modal-save nodrag nopan" onClick={save}>Save</button>
-                <button className="template-modal-close nodrag nopan" onClick={() => setOpen(false)}>✕</button>
+                <button className="template-modal-close nodrag nopan" onClick={() => setOpen(false)} aria-label="Close editor">✕</button>
               </div>
             </header>
             <textarea
@@ -319,21 +372,45 @@ const FlowFieldRow = memo(({ field, nodeId, onFieldChange, nodeType }) => {
   );
 });
 
-const InputPortRow = memo(({ port }) => (
-  <div className={`generated-port-row${port.mode === "extension" ? " is-extension" : ""}`} title={port.description}>
-    <Handle type="target" id={port.id} position={Position.Left} />
-    <span>{port.label}</span>
-    <code>{port.type || "any"}</code>
-  </div>
-));
+const InputPortRow = memo(({ port }) => {
+  const color = portColor(port);
+  return (
+    <div
+      className={`generated-port-row${port.mode === "extension" ? " is-extension" : ""}`}
+      title={port.description}
+      style={{ "--port-color": color }}
+    >
+      <Handle
+        type="target"
+        id={port.id}
+        position={Position.Left}
+        style={{ background: color, boxShadow: `0 0 0 1px ${color}, 0 0 8px ${color}66` }}
+      />
+      <span className="port-label">{port.label}</span>
+      <code className="port-type">{port.type || "any"}</code>
+    </div>
+  );
+});
 
-const OutputPortRow = memo(({ port }) => (
-  <div className={`generated-port-row is-output${port.mode === "extension" ? " is-extension" : ""}`} title={port.description}>
-    <code>{port.type || "any"}</code>
-    <span>{port.label}</span>
-    <Handle type="source" id={port.id} position={Position.Right} />
-  </div>
-));
+const OutputPortRow = memo(({ port }) => {
+  const color = portColor(port);
+  return (
+    <div
+      className={`generated-port-row is-output${port.mode === "extension" ? " is-extension" : ""}`}
+      title={port.description}
+      style={{ "--port-color": color }}
+    >
+      <code className="port-type">{port.type || "any"}</code>
+      <span className="port-label">{port.label}</span>
+      <Handle
+        type="source"
+        id={port.id}
+        position={Position.Right}
+        style={{ background: color, boxShadow: `0 0 0 1px ${color}, 0 0 8px ${color}66` }}
+      />
+    </div>
+  );
+});
 
 function previewLines(value, maxLines = 15) {
   if (value === null || value === undefined) return ["null"];
@@ -346,6 +423,34 @@ function previewLines(value, maxLines = 15) {
     `\n… (${lines.length - maxLines} more lines)`,
   ];
 }
+
+const CopyButton = memo(({ value }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(
+    (e) => {
+      e.stopPropagation();
+      navigator.clipboard?.writeText(String(value ?? "")).then(
+        () => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        },
+        () => {},
+      );
+    },
+    [value],
+  );
+  return (
+    <button
+      type="button"
+      className="copy-btn nodrag nopan"
+      onClick={copy}
+      aria-label="Copy value to clipboard"
+      title="Copy"
+    >
+      {copied ? "Copied ✓" : "Copy"}
+    </button>
+  );
+});
 
 const SavedComponentNode = memo(({ id, data }) => {
   const component = data.component;
@@ -363,6 +468,17 @@ const SavedComponentNode = memo(({ id, data }) => {
     (status === "completed" || status === "streaming") &&
     nodeOutputs &&
     Object.keys(nodeOutputs).length > 0;
+  const failed = status === "failed";
+  const canPreview = hasOutputs || failed;
+
+  useEffect(() => {
+    if (!showPreview) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") setShowPreview(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showPreview]);
 
   return (
     <article
@@ -370,14 +486,21 @@ const SavedComponentNode = memo(({ id, data }) => {
       title={component.description}
     >
       {status && status !== "pending" && (
-        <div className="node-runtime-badge">
+        <div
+          className="node-runtime-badge"
+          title={data.nodeError || undefined}
+        >
           {status === "running"
             ? "Running..."
             : status === "streaming"
               ? "Streaming..."
-              : duration !== null && duration !== undefined
-                ? `${duration}s`
-                : "Completed"}
+              : status === "failed"
+                ? "Failed"
+                : status === "skipped"
+                  ? "Skipped"
+                  : duration !== null && duration !== undefined
+                    ? `${duration}s`
+                    : "Completed"}
         </div>
       )}
       <header className="generated-component-header">
@@ -400,6 +523,7 @@ const SavedComponentNode = memo(({ id, data }) => {
             type="button"
             className={`switch cache-toggle nodrag nopan ${data.cacheEnabled ? "is-on" : ""}`}
             aria-pressed={Boolean(data.cacheEnabled)}
+            aria-label="Toggle result caching"
             onPointerDown={stopFlowInteraction}
             onMouseDown={stopFlowInteraction}
             onClick={(e) => {
@@ -445,21 +569,29 @@ const SavedComponentNode = memo(({ id, data }) => {
           ))}
         </div>
       )}
-      {hasOutputs && (
+      {canPreview && (
         <>
           <button
-            className="output-preview-btn nodrag nopan"
+            className={`node-preview-btn nodrag nopan${failed && !hasOutputs ? " is-error" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
               setShowPreview(true);
             }}
-            title="Preview outputs"
+            aria-label={
+              failed && !hasOutputs
+                ? `View error for ${component.name}`
+                : `Preview output of ${component.name}`
+            }
           >
-            Preview
+            <span aria-hidden="true">{failed && !hasOutputs ? "⚠" : "⤢"}</span>
+            {failed && !hasOutputs ? "View error" : "Preview output"}
           </button>
           {showPreview && (
             <div
               className="output-modal-backdrop"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${component.name} ${failed && !hasOutputs ? "error" : "output"}`}
               onClick={() => setShowPreview(false)}
             >
               <div
@@ -467,28 +599,45 @@ const SavedComponentNode = memo(({ id, data }) => {
                 onClick={(e) => e.stopPropagation()}
               >
                 <header className="output-modal-header">
-                  <strong>{component.name} — Outputs{status === "streaming" ? " (streaming…)" : ""}</strong>
+                  <strong>
+                    {component.name} — {failed && !hasOutputs ? "Error" : "Output"}
+                    {status === "streaming" ? " (streaming…)" : ""}
+                  </strong>
                   <button
                     className="output-modal-close nodrag nopan"
                     onClick={() => setShowPreview(false)}
+                    aria-label="Close"
+                    autoFocus
                   >
                     ✕
                   </button>
                 </header>
                 <div className="output-modal-body">
-                  {Object.entries(nodeOutputs).length === 0 && (
+                  {failed && (
+                    <div className="output-error">
+                      <span className="output-error-icon" aria-hidden="true">⚠</span>
+                      <span className="output-error-msg">
+                        {data.nodeError || "This node failed without a message."}
+                      </span>
+                    </div>
+                  )}
+                  {hasOutputs &&
+                    Object.entries(nodeOutputs).map(([key, val]) => (
+                      <div className="output-entry" key={key}>
+                        <div className="output-entry-head">
+                          <code className="output-entry-key">{key}</code>
+                          <CopyButton
+                            value={typeof val === "string" ? val : JSON.stringify(val, null, 2)}
+                          />
+                        </div>
+                        <pre className="output-entry-value">
+                          {previewLines(val, 40).join("\n")}
+                        </pre>
+                      </div>
+                    ))}
+                  {!failed && !hasOutputs && (
                     <p className="output-modal-empty">No outputs</p>
                   )}
-                  {Object.entries(nodeOutputs).map(([key, val]) => (
-                    <div className="output-entry" key={key}>
-                      <code className="output-entry-key">{key}</code>
-                      <pre className="output-entry-value">
-                        {previewLines(val, 15).map((line, i) => (
-                          <span key={i}>{line}</span>
-                        ))}
-                      </pre>
-                    </div>
-                  ))}
                 </div>
               </div>
             </div>
@@ -499,64 +648,167 @@ const SavedComponentNode = memo(({ id, data }) => {
   );
 });
 
-const FlowToolbar = memo(
-  ({
-    components,
-    selectedId,
-    onSelect,
-    onRefresh,
-    onAdd,
-    onFetchBackend,
-    hasSelected,
-    onRun,
-    isRunning,
-    status,
-  }) => (
-    <div className="flow-toolbar">
-      <div>
-        <span>Flow canvas</span>
-        <strong>Build a pipeline</strong>
-        <small className="flow-run-status">{status}</small>
+const FlowToolbar = memo(({ nodeCount, edgeCount, onRun, isRunning, status }) => (
+  <div className="flow-toolbar">
+    <div className="flow-toolbar-info">
+      <span>Flow canvas</span>
+      <strong>Build a pipeline</strong>
+      <small className="flow-run-status">{status}</small>
+    </div>
+    <div className="flow-toolbar-actions">
+      <div className="flow-stat-chips">
+        <span className="flow-chip">{nodeCount} {nodeCount === 1 ? "node" : "nodes"}</span>
+        <span className="flow-chip">{edgeCount} {edgeCount === 1 ? "edge" : "edges"}</span>
       </div>
-      <div className="flow-library">
-        <select
-          value={selectedId}
-          onChange={(e) => onSelect(e.target.value)}
-          disabled={!components.length}
-        >
-          {components.length ? (
-            components.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c._backendRef ? " ⚡" : ""}
-              </option>
-            ))
-          ) : (
-            <option>No components loaded</option>
-          )}
-        </select>
-        <button type="button" onClick={onRefresh}>
-          Refresh Local
-        </button>
-        <button type="button" onClick={onFetchBackend}>
-          Fetch from Backend
-        </button>
-        <button type="button" onClick={onAdd} disabled={!hasSelected}>
-          Add
-        </button>
-        <button
-          type="button"
-          className="run-button"
-          onClick={onRun}
-          disabled={isRunning}
-          style={{ background: "#3b82f6", color: "white", fontWeight: "bold" }}
-        >
-          {isRunning ? "Running..." : "Run Flow"}
-        </button>
+      <button
+        type="button"
+        className="run-button"
+        onClick={onRun}
+        disabled={isRunning || nodeCount === 0}
+        title={nodeCount === 0 ? "Add a node first" : "Run flow (Ctrl/⌘ + Enter)"}
+      >
+        {isRunning
+          ? <span className="run-spinner" aria-hidden="true" />
+          : <span className="run-glyph" aria-hidden="true">▶</span>}
+        {isRunning ? "Running…" : "Run Flow"}
+      </button>
+    </div>
+  </div>
+));
+
+function groupByCategory(components) {
+  const groups = new Map();
+  for (const c of components || []) {
+    const cat = c._backendDef?.category || (c._backendRef ? "general" : "local");
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat).push(c);
+  }
+  return [...groups.entries()].sort((a, b) => {
+    if (a[0] === "local") return 1;
+    if (b[0] === "local") return -1;
+    return a[0].localeCompare(b[0]);
+  });
+}
+
+const PortLegend = memo(({ types }) => {
+  if (!types.length) return null;
+  return (
+    <div className="port-legend">
+      <span className="port-legend-title">Port types</span>
+      <div className="port-legend-items">
+        {types.map(([t, color]) => (
+          <span className="port-legend-item" key={t}>
+            <span className="port-legend-dot" style={{ background: color }} />
+            {t}
+          </span>
+        ))}
+        <span className="port-legend-item">
+          <span className="port-legend-dot" style={{ background: EXTENSION_PORT_COLOR }} />
+          extension
+        </span>
       </div>
     </div>
-  ),
-);
+  );
+});
+
+const FlowPalette = memo(({ components, onAdd, onFetchBackend, onRefresh, legendTypes }) => {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return components;
+    return components.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.description || "").toLowerCase().includes(q),
+    );
+  }, [components, query]);
+  const groups = useMemo(() => groupByCategory(filtered), [filtered]);
+
+  const onDragStart = (e, comp) => {
+    e.dataTransfer.setData("application/bertflow-node", comp.id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  return (
+    <aside className="flow-palette">
+      <header className="palette-header">
+        <span>Node Library</span>
+        <strong>BertFlow</strong>
+      </header>
+      <div className="palette-actions">
+        <button type="button" className="palette-fetch" onClick={onFetchBackend}>
+          ⚡ Fetch from Backend
+        </button>
+        <button type="button" onClick={onRefresh}>Refresh Local</button>
+      </div>
+      <input
+        className="palette-search nodrag"
+        type="search"
+        placeholder="Search nodes…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        aria-label="Search nodes"
+      />
+      <div className="palette-list">
+        {groups.length === 0 && (
+          <p className="palette-empty">
+            {components.length
+              ? "No nodes match your search."
+              : 'No nodes loaded yet. Click "Fetch from Backend" to discover node types.'}
+          </p>
+        )}
+        {groups.map(([cat, items]) => (
+          <section className="palette-group" key={cat}>
+            <h3>{cat}</h3>
+            {items.map((c) => (
+              <button
+                type="button"
+                key={c.id}
+                className="palette-item"
+                draggable
+                onDragStart={(e) => onDragStart(e, c)}
+                onClick={() => onAdd(c)}
+                title={c.description}
+                aria-label={`Add ${c.name}`}
+              >
+                <span
+                  className="palette-item-dot"
+                  style={{ background: c._backendDef?.ui_config?.color || "var(--accent)" }}
+                />
+                <span className="palette-item-name">{c.name}</span>
+                {c._backendRef && (
+                  <span className="palette-item-badge" title="Backend node">⚡</span>
+                )}
+              </button>
+            ))}
+          </section>
+        ))}
+      </div>
+      <PortLegend types={legendTypes} />
+    </aside>
+  );
+});
+
+const ToastStack = memo(({ toasts, onDismiss }) => (
+  <div className="toast-stack" role="status" aria-live="polite">
+    {toasts.map((t) => (
+      <div className={`toast toast-${t.kind}`} key={t.id}>
+        <span className="toast-icon" aria-hidden="true">
+          {t.kind === "success" ? "✓" : t.kind === "error" ? "✕" : t.kind === "warning" ? "!" : "i"}
+        </span>
+        <span className="toast-msg">{t.message}</span>
+        <button
+          type="button"
+          className="toast-close"
+          onClick={() => onDismiss(t.id)}
+          aria-label="Dismiss notification"
+        >
+          ✕
+        </button>
+      </div>
+    ))}
+  </div>
+));
 
 const defaultEdgeOptions = { animated: false, zIndex: 50 };
 
@@ -576,6 +828,30 @@ export default function Flow() {
   nodesRef.current = nodes;
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
+  const allComponentsRef = useRef(allComponents);
+  allComponentsRef.current = allComponents;
+  const rfInstance = useRef(null);
+
+  const [toasts, setToasts] = useState([]);
+  const toastIdRef = useRef(0);
+  const pushToast = useCallback((message, kind = "info", ttl = 4500) => {
+    const id = ++toastIdRef.current;
+    setToasts((cur) => [...cur, { id, message, kind }]);
+    if (ttl) {
+      setTimeout(
+        () => setToasts((cur) => cur.filter((t) => t.id !== id)),
+        ttl,
+      );
+    }
+  }, []);
+  const dismissToast = useCallback((id) => {
+    setToasts((cur) => cur.filter((t) => t.id !== id));
+  }, []);
+
+  const legendTypes = useMemo(
+    () => collectPortTypes(allComponents),
+    [allComponents],
+  );
 
   useEffect(() => {
     return () => {
@@ -618,8 +894,6 @@ export default function Flow() {
 
   const nodeTypes = useMemo(() => ({ savedComponent: SavedComponentNode }), []);
 
-  const selected = allComponents.find((c) => c.id === selectedId);
-
   const mergeBackendComponents = useCallback((backendTypes) => {
     const local = loadSavedComponents();
     const backend = (backendTypes || []).map(backendTypeToComponent);
@@ -641,6 +915,7 @@ export default function Flow() {
     const timeout = setTimeout(() => {
       socket.close(1000, "timeout");
       setStatus("Backend connection timed out");
+      pushToast("Backend connection timed out", "error");
     }, 5000);
 
     socket.addEventListener("open", () => {
@@ -653,6 +928,7 @@ export default function Flow() {
         clearTimeout(timeout);
         mergeBackendComponents(msg.node_types);
         setStatus(`Backend ready: ${msg.node_types.length} node types`);
+        pushToast(`Loaded ${msg.node_types.length} node types from backend`, "success");
         socket.close(1000, "done");
       } else if (msg.type === "pong") {
       }
@@ -661,12 +937,13 @@ export default function Flow() {
     socket.addEventListener("error", () => {
       clearTimeout(timeout);
       setStatus("Cannot reach backend");
+      pushToast("Cannot reach backend — is it running?", "error");
     });
 
     socket.addEventListener("close", () => {
       clearTimeout(timeout);
     });
-  }, [mergeBackendComponents]);
+  }, [mergeBackendComponents, pushToast]);
 
   const refreshSavedComponents = useCallback(() => {
     const local = loadSavedComponents();
@@ -699,30 +976,76 @@ export default function Flow() {
     return { inputs, outputs };
   }
 
-  const addSelectedComponent = useCallback(() => {
-    if (!selected) return;
-    const comp = cloneComponent(selected);
-    setNodes((current) => [
-      ...current,
-      {
-        id: makeId("flow-node"),
-        type: "savedComponent",
-        dragHandle: ".generated-component-header",
-        position: {
-          x: 120 + current.length * 38,
-          y: 120 + current.length * 28,
-        },
-        data: {
-          component: comp,
-          onFieldChange: updateNodeField,
-          onCacheToggle: toggleNodeCache,
-          cacheEnabled: false,
-          _nodeType: selected._backendRef || null,
-          _portMap: makePortMap(comp),
-        },
-      },
-    ]);
-  }, [selected, updateNodeField]);
+  const addComponent = useCallback(
+    (component, position) => {
+      if (!component) return;
+      const comp = cloneComponent(component);
+      setNodes((current) => {
+        const pos =
+          position || {
+            x: 160 + current.length * 36,
+            y: 140 + current.length * 26,
+          };
+        return [
+          ...current,
+          {
+            id: makeId("flow-node"),
+            type: "savedComponent",
+            dragHandle: ".generated-component-header",
+            position: pos,
+            data: {
+              component: comp,
+              onFieldChange: updateNodeField,
+              onCacheToggle: toggleNodeCache,
+              cacheEnabled: false,
+              _nodeType: component._backendRef || null,
+              _portMap: makePortMap(comp),
+            },
+          },
+        ];
+      });
+      pushToast(`Added “${comp.name}”`, "info", 2200);
+    },
+    [updateNodeField, toggleNodeCache, pushToast],
+  );
+
+  const addFromPalette = useCallback(
+    (component) => {
+      let position;
+      if (rfInstance.current?.screenToFlowPosition) {
+        position = rfInstance.current.screenToFlowPosition({
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2,
+        });
+      }
+      addComponent(component, position);
+    },
+    [addComponent],
+  );
+
+  const onDragOver = useCallback((event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback(
+    (event) => {
+      event.preventDefault();
+      const id = event.dataTransfer.getData("application/bertflow-node");
+      if (!id) return;
+      const comp = allComponentsRef.current.find((c) => c.id === id);
+      if (!comp) return;
+      let position;
+      if (rfInstance.current?.screenToFlowPosition) {
+        position = rfInstance.current.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+      }
+      addComponent(comp, position);
+    },
+    [addComponent],
+  );
 
   const onNodesChange = useCallback((changes) => {
     setNodes((current) => applyNodeChanges(changes, current));
@@ -761,7 +1084,9 @@ export default function Flow() {
       srcPort.mode !== "extension" && tgtPort.mode !== "extension" &&
       !arePortTypesCompatible(srcPort.type, tgtPort.type)
     ) {
-      setStatus(`Type mismatch: ${srcPort.type} → ${tgtPort.type}`);
+      const msg = `Type mismatch: ${srcPort.type} → ${tgtPort.type}`;
+      setStatus(msg);
+      pushToast(msg, "warning");
       return;
     }
     setEdges((current) => {
@@ -780,13 +1105,14 @@ export default function Flow() {
         className: mode === "extension" ? "extension-edge" : "",
       }, base);
     });
-  }, []);
+  }, [pushToast]);
 
   const runFlow = useCallback(async () => {
     const currentNodes = nodesRef.current;
     const currentEdges = edgesRef.current;
     if (!currentNodes.length) {
       setStatus("Add at least one node first");
+      pushToast("Add at least one node before running", "warning");
       return;
     }
 
@@ -875,7 +1201,7 @@ export default function Flow() {
             setNodes((current) =>
               current.map((node) => ({
                 ...node,
-                data: { ...node.data, nodeStatus: "pending", nodeDuration: null },
+                data: { ...node.data, nodeStatus: "pending", nodeDuration: null, nodeError: null },
               })),
             );
           }
@@ -889,6 +1215,7 @@ export default function Flow() {
                         ...node.data,
                         nodeStatus: msg.status,
                         nodeDuration: msg.duration !== undefined ? msg.duration : node.data.nodeDuration,
+                        nodeError: msg.error ?? null,
                       },
                     }
                   : node,
@@ -912,6 +1239,7 @@ export default function Flow() {
                 data: { ...node.data, nodeStatus: null, nodeDuration: null },
               })),
             );
+            pushToast(summarizeMessage(msg), "error", 7000);
             finish(reject, new Error(summarizeMessage(msg)));
           }
           if (msg.type === "run_finished") {
@@ -931,6 +1259,7 @@ export default function Flow() {
     } catch (err) {
       console.error("Run error:", err);
       setStatus(err.message || "Run failed");
+      pushToast(err.message || "Run failed", "error", 7000);
       setNodes((current) =>
         current.map((node) => ({
           ...node,
@@ -1019,12 +1348,16 @@ export default function Flow() {
       }
 
       console.log("══════════════════════════════════════════════════");
-      const counts = Object.values(resultMsg.state.node_states)
-        .map((ns) => `${ns.node_id?.slice(0, 8) || "?"}:${ns.status}`)
-        .join(", ");
-      setStatus(`Run completed — ${counts}`);
+      const states = Object.values(resultMsg.state.node_states);
+      const done = states.filter((ns) => ns.status === "completed").length;
+      const cached = states.filter((ns) => ns.cached).length;
+      const summary = `Run completed — ${done}/${states.length} nodes${cached ? `, ${cached} cached` : ""}`;
+      setStatus(summary);
+      pushToast(summary, "success");
     } else {
-      setStatus(resultMsg?.state?.error || "Run failed");
+      const errMsg = resultMsg?.state?.error || "Run failed";
+      setStatus(errMsg);
+      pushToast(errMsg, "error", 7000);
     }
     if (resultMsg?.state?.node_states) {
       setNodes((current) =>
@@ -1035,44 +1368,85 @@ export default function Flow() {
             nodeStatus: resultMsg.state.node_states[node.id]?.status || null,
             nodeOutputs: resultMsg.state.node_states[node.id]?.outputs || null,
             nodeDuration: resultMsg.state.node_states[node.id]?.duration || null,
+            nodeError: resultMsg.state.node_states[node.id]?.error || null,
           },
         })),
       );
     }
     setIsRunning(false);
-  }, []);
+  }, [pushToast]);
+
+  // Keyboard shortcuts: Ctrl/⌘+Enter runs the flow (unless typing in a field).
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target?.tagName || "").toLowerCase();
+      const typing =
+        tag === "input" || tag === "textarea" || e.target?.isContentEditable;
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !typing) {
+        e.preventDefault();
+        if (!isRunning) runFlow();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [runFlow, isRunning]);
 
   return (
-    <main className="flow-page">
-      <FlowToolbar
+    <div className="app-shell">
+      <FlowPalette
         components={allComponents}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onRefresh={refreshSavedComponents}
+        onAdd={addFromPalette}
         onFetchBackend={fetchFromBackend}
-        onAdd={addSelectedComponent}
-        hasSelected={!!selected}
-        onRun={runFlow}
-        isRunning={isRunning}
-        status={status}
+        onRefresh={refreshSavedComponents}
+        legendTypes={legendTypes}
       />
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onlyRenderVisibleElements
-        nodeTypes={nodeTypes}
-        defaultEdgeOptions={defaultEdgeOptions}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        fitView
-        minZoom={0.35}
-        maxZoom={1.4}
-      >
-        <MiniMap pannable zoomable />
-        <Controls />
-        <Background gap={22} size={1.2} color="#cbd5e1" />
-      </ReactFlow>
-    </main>
+      <div className="flow-canvas" onDrop={onDrop} onDragOver={onDragOver}>
+        <FlowToolbar
+          nodeCount={nodes.length}
+          edgeCount={edges.length}
+          onRun={runFlow}
+          isRunning={isRunning}
+          status={status}
+        />
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onlyRenderVisibleElements
+          nodeTypes={nodeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onInit={(inst) => {
+            rfInstance.current = inst;
+          }}
+          deleteKeyCode={["Delete"]}
+          fitView
+          minZoom={0.35}
+          maxZoom={1.4}
+        >
+          <MiniMap pannable zoomable />
+          <Controls />
+          <Background gap={22} size={1.2} color="#2a2a3a" />
+        </ReactFlow>
+        {nodes.length === 0 && (
+          <div className="canvas-empty">
+            <div className="canvas-empty-card">
+              <div className="canvas-empty-icon" aria-hidden="true">⌗</div>
+              <h2>Start building your pipeline</h2>
+              <p>
+                Drag a node from the <strong>library</strong> on the left onto the
+                canvas — or click one to drop it in the center. Connect ports, then
+                press <kbd>Run Flow</kbd> (<kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd>).
+              </p>
+              <p className="canvas-empty-hint">
+                Library empty? Click <strong>Fetch from Backend</strong>.
+              </p>
+            </div>
+          </div>
+        )}
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    </div>
   );
 }

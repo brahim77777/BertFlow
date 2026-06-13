@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -53,8 +54,12 @@ class DocumentProcessor:
         if resolved is None:
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        with open(resolved, encoding="utf-8", errors="replace") as f:
-            text = f.read()
+        def _read() -> str:
+            with open(resolved, encoding="utf-8", errors="replace") as f:
+                return f.read()
+
+        # Reading the file is blocking I/O — keep it off the event loop.
+        text = await asyncio.to_thread(_read)
 
         return {
             "text": text,

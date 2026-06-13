@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -58,19 +59,23 @@ class PDFiumProcessor:
         if missing_files:
             return {"pages": []}
 
-        try:
-            all_pages = []
-
+        def _extract() -> list[dict]:
+            pages = []
             for resolved_path in resolved_paths:
                 filename = os.path.basename(resolved_path)
                 file_pages = rust_bridge.load_pdf_pages_pdfium_many([resolved_path])
                 for page_idx, page_text in enumerate(file_pages, start=1):
-                    all_pages.append({
+                    pages.append({
                         "text": page_text,
                         "source": filename,
                         "page": page_idx,
                     })
+            return pages
 
+        try:
+            # PDFium extraction is blocking and CPU-bound — run it off the
+            # event loop so it doesn't stall other concurrently-running nodes.
+            all_pages = await asyncio.to_thread(_extract)
             return {"pages": all_pages}
         except Exception as e:
             raise RuntimeError(f"Rust Bridge Execution Failure: {e}")
